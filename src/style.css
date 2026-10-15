@@ -57,6 +57,8 @@ button:disabled { opacity: .52; cursor: wait; }
 .brand span { display: grid; gap: 3px; padding-left: 11px; border-left: 1px solid var(--line); }
 .brand strong { font: 800 .89rem/1.2 Manrope, sans-serif; letter-spacing: -.025em; }
 .brand small { color: var(--muted); font-size: .64rem; letter-spacing: .03em; }
+.copyright-link { flex: 0 0 auto; color: var(--muted); font-size: .62rem; font-weight: 600; line-height: 1.4; text-decoration: none; }
+.copyright-link:hover { color: var(--navy); text-decoration: underline; text-underline-offset: 3px; }
 .main-nav { display: flex; flex: 1; align-items: center; justify-content: center; gap: 5px; min-width: 0; }
 .nav-tab {
   position: relative;
@@ -241,6 +243,7 @@ tbody tr:hover { background: #fbfaf6; }
   .topbar { flex-wrap: wrap; min-height: auto; padding: 10px 16px 8px; }
   .brand { flex: 1; }
   .brand img { width: 43px; height: 37px; }
+  .copyright-link { order: 1; }
   .account-menu { order: 1; }
   .main-nav { order: 2; flex: 1 0 100%; justify-content: flex-start; overflow-x: auto; }
   .nav-tab { min-height: 38px; padding-inline: 11px; }
@@ -253,6 +256,7 @@ tbody tr:hover { background: #fbfaf6; }
   .brand img { width: 39px; height: 34px; }
   .brand strong { font-size: .8rem; }
   .brand small { font-size: .55rem; }
+  .copyright-link { flex: 1 1 130px; font-size: .57rem; }
   .account-menu { gap: 6px; padding-left: 8px; }
   .account-email { display: none; }
   .workspace { width: calc(100% - 24px); padding: 17px 0 34px; }
