@@ -20,7 +20,7 @@ Gunakan **anon/publishable key**. Jangan masukkan `service_role` key ke aplikasi
 
 ## Bootstrap role pertama
 
-Setelah mendaftar dan memastikan akun sudah ada di Supabase Auth, jalankan query ini di SQL Editor. Ganti email dengan email akun developer pertama:
+Setelah mendaftar dan memastikan akun sudah ada di Supabase Auth, jalankan `supabase/grant_developer_access.sql` di SQL Editor, atau gunakan query di bawah ini dengan email akun developer pertama:
 
 ```sql
 update public.profiles p
