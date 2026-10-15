@@ -152,7 +152,24 @@ function logs(state) {
   const rows = state.inputLogs;
   return `${periodHead(state.month, 'Log input', 'Riwayat perubahan data kas untuk pengawasan internal.')}
     <section class="panel">${panelTitle('AUDIT TRAIL', 'Aktivitas tercatat', 'Maksimal 500 aktivitas untuk periode yang dipilih.')}
-    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Perubahan</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${logTime(row.created_at)}</td><td>${esc(row.actor_email || '—')}</td><td><span class="flow-pill ${row.action === 'delete' ? 'expense' : 'income'}">${row.action === 'insert' ? 'Tambah' : row.action === 'update' ? 'Ubah' : 'Hapus'}</span></td><td class="log-change"><strong>${esc(row.table_name === 'cashflow_settings' ? 'Saldo awal' : 'Transaksi kas')}</strong><small>${logSummary(row.changes)}</small></td></tr>`).join('')}</tbody></table></div>` : '<div class="quiet-empty">Belum ada aktivitas tercatat untuk periode ini.</div>'}
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Perubahan</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${logTime(row.created_at)}</td><td>${esc(row.actor_email || '—')}</td><td><span class="flow-pill ${row.action === 'delete' ? 'expense' : 'income'}">${row.action === 'insert' ? 'Tambah' : row.action === 'update' ? 'Ubah' : 'Hapus'}</span></td><td class="log-change"><strong>${esc(row.table_name === 'cashflow_settings' ? 'Saldo awal' : row.table_name === 'profiles' ? 'Akses akun' : 'Transaksi kas')}</strong><small>${logSummary(row.changes)}</small></td></tr>`).join('')}</tbody></table></div>` : '<div class="quiet-empty">Belum ada aktivitas tercatat untuk periode ini.</div>'}
+    </section>`;
+}
+
+function accountAccess(state) {
+  const pending = state.profiles.filter((profile) => !profile.workspace_id).length;
+  const currentUserId = state.session.user.id;
+  const rows = state.profiles.map((profile) => {
+    const hasAccess = Boolean(profile.workspace_id);
+    const isCurrentUser = profile.user_id === currentUserId;
+    return `<tr><td><strong class="account-name">${esc(profile.email || 'Akun tanpa email')}</strong><small class="account-created">Terdaftar ${formatDate(profile.created_at)}</small></td>
+      <td><span class="flow-pill ${hasAccess ? 'income' : 'expense'}">${hasAccess ? 'Aktif' : 'Menunggu akses'}</span></td>
+      <td colspan="2"><form class="account-role-form" data-form="account-role"><input type="hidden" name="user_id" value="${esc(profile.user_id)}"><div class="account-role-controls"><select class="select-compact" name="role" aria-label="Role ${esc(profile.email)}" ${state.busy || isCurrentUser ? 'disabled' : ''}><option value="staff" ${profile.role === 'staff' ? 'selected' : ''}>Staff</option><option value="developer" ${profile.role === 'developer' ? 'selected' : ''}>Developer</option></select><button class="button ${hasAccess ? 'secondary' : 'primary'} account-save" type="submit" ${state.busy || isCurrentUser ? 'disabled' : ''}>${hasAccess ? 'Simpan role' : 'Berikan akses'}</button>${isCurrentUser ? '<small class="account-self-note">Role Anda</small>' : ''}</div></form></td></tr>`;
+  }).join('');
+  return `<section class="page-heading"><div><p class="eyebrow">PENGELOLAAN DEVELOPER</p><h1>Akun &amp; akses</h1><p>Hubungkan akun baru ke workspace dan atur peran staff atau developer.</p></div></section>
+    <div class="summary-grid"><div class="summary-item"><span>Total akun</span><strong>${number(state.profiles.length)}</strong></div><div class="summary-item"><span>Menunggu akses</span><strong>${number(pending)}</strong></div></div>
+    <section class="panel">${panelTitle('ANGGOTA WORKSPACE', 'Kelola akun', 'Akun yang menunggu akses berasal dari pendaftaran baru. Role Anda sendiri tidak dapat diubah di sini.')}
+      ${rows ? `<div class="table-wrap"><table><thead><tr><th>Akun</th><th>Akses workspace</th><th colspan="2">Role / tindakan</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="quiet-empty">Belum ada akun terdaftar.</div>'}
     </section>`;
 }
 
@@ -174,8 +191,8 @@ export function renderApp(state) {
   if (state.profileError) return `<main class="auth-screen"><section class="auth-card"><h1>Akses akun belum siap</h1><div class="notice notice-warn"><span>${esc(state.profileError)}</span></div><button class="button secondary button-wide" type="button" data-act="signout">Keluar</button></section></main>`;
   if (!state.profile?.workspace_id) return `<main class="auth-screen"><section class="auth-card"><img src="/brand-mark.png" alt="" class="auth-logo"><p class="eyebrow">AKUN STAFF</p><h1>Akses menunggu developer</h1><p class="auth-copy">Akun ${esc(state.session.user.email)} sudah terdaftar. Developer perlu menghubungkan akun ke workspace Cashflow SKG melalui Supabase SQL Editor.</p><button class="button secondary button-wide" type="button" data-act="signout">Keluar</button></section></main>`;
   const isDeveloper = state.profile.role === 'developer';
-  const tabs = [['dashboard', 'Ringkasan', 'home'], ['cashflow', 'Cashflow', 'wallet'], ...(isDeveloper ? [['logs-input', 'Log Input', 'file']] : [])];
+  const tabs = [['dashboard', 'Ringkasan', 'home'], ['cashflow', 'Cashflow', 'wallet'], ...(isDeveloper ? [['accounts', 'Akun & akses', 'users'], ['logs-input', 'Log Input', 'file']] : [])];
   const tab = tabs.find(([key]) => key === state.tab) ? state.tab : 'dashboard';
-  const content = tab === 'dashboard' ? dashboard(state) : tab === 'cashflow' ? cashflow(state) : logs(state);
+  const content = tab === 'dashboard' ? dashboard(state) : tab === 'cashflow' ? cashflow(state) : tab === 'accounts' ? accountAccess(state) : logs(state);
   return `<div class="app-shell"><header class="topbar"><a class="brand" href="#" data-act="navigate" data-tab="dashboard"><img src="/brand-mark.png" alt="Logo PT Swatama Karya Gemilang"><span><strong>Cashflow SKG</strong><small>PT Swatama Karya Gemilang</small></span></a><nav class="main-nav" aria-label="Navigasi utama">${tabs.map(([key, label, glyph]) => `<button class="nav-tab ${tab === key ? 'active' : ''}" type="button" data-act="navigate" data-tab="${key}">${icon(glyph, 17)}<span>${label}</span></button>`).join('')}</nav><div class="account-menu"><span class="role-badge ${isDeveloper ? 'developer' : ''}">${isDeveloper ? 'Developer' : 'Staff'}</span><span class="account-email" title="${esc(state.session.user.email)}">${esc(state.session.user.email)}</span><button class="icon-button" type="button" data-act="signout" aria-label="Keluar">${icon('logout', 17)}</button></div></header><main class="workspace">${state.error ? `<div class="notice notice-warn load-notice">${icon('alert', 17)}<span>${esc(state.error)}</span><button type="button" data-act="retry">Coba lagi</button></div>` : ''}${state.loading ? '<div class="loading-line"><i></i> Memuat data kas…</div>' : ''}${content}</main>${modal(state)}<div class="toast-stack" aria-live="polite">${state.toast ? `<div class="toast ${state.toast.type}" role="status">${icon(state.toast.type === 'error' ? 'alert' : 'check', 17)}<span>${esc(state.toast.message)}</span></div>` : ''}</div></div>`;
 }

@@ -74,3 +74,17 @@ export async function loadInputLogs(month) {
   if (error) throw error;
   return data || [];
 }
+
+export async function loadWorkspaceUsers() {
+  const { data, error } = await supabase.rpc('list_workspace_users');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function setWorkspaceUserRole(userId, role) {
+  const { error } = await supabase.rpc('set_workspace_user_role', {
+    target_user_id: userId,
+    new_role: role,
+  });
+  if (error) throw error;
+}

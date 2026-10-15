@@ -185,6 +185,13 @@ tbody tr:hover { background: #fbfaf6; }
 .log-change { min-width: 220px; }
 .log-change strong, .log-change small { display: block; }
 .log-change small { max-width: 480px; margin-top: 4px; overflow-wrap: anywhere; color: #879298; font-size: .67rem; line-height: 1.45; }
+.account-name, .account-created { display: block; }
+.account-name { color: var(--ink); font-weight: 700; }
+.account-created, .account-self-note { margin-top: 4px; color: #879298; font-size: .65rem; }
+.account-role-form { display: flex; align-items: center; width: 100%; }
+.account-role-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.account-role-form .select-compact { min-width: 125px; }
+.account-save { min-height: 34px; padding-inline: 10px; font-size: .68rem; white-space: nowrap; }
 
 .auth-screen { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: radial-gradient(ellipse at top, rgba(53, 134, 65, .09), transparent 34rem), #f6f4ed; }
 .auth-card { width: min(440px, 100%); padding: 34px; border: 1px solid #e4e0d7; border-radius: 25px 25px 25px 9px; background: rgba(255, 254, 250, .96); box-shadow: 0 24px 70px rgba(42, 55, 48, .1); }

@@ -1,6 +1,7 @@
 import {
   deleteTransaction, isConfigured, loadInputLogs, loadProfile, loadSettings,
-  loadTransactions, saveSettings, saveTransaction, setWorkspaceId, supabase,
+  loadTransactions, loadWorkspaceUsers, saveSettings, saveTransaction,
+  setWorkspaceId, setWorkspaceUserRole, supabase,
 } from './db.js';
 import { today } from './helpers.js';
 import { renderApp } from './views.js';
@@ -11,7 +12,7 @@ const state = {
   configured: isConfigured, session: null, profile: null, profileLoading: false,
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
   month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [],
-  settings: null, inputLogs: [], category: '', kind: '', search: '',
+  settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '',
   loading: false, busy: false, error: '', modal: null, toast: null,
 };
 const app = document.querySelector('#app');
@@ -35,18 +36,24 @@ function message(error) {
   return text;
 }
 
-async function loadData({ withLogs = false } = {}) {
+async function loadData({ withLogs = false, withUsers = false } = {}) {
   if (!state.profile?.workspace_id) return;
   const userId = state.session?.user?.id;
   state.loading = true;
   state.error = '';
   render();
   try {
-    const [settings, transactions] = await Promise.all([loadSettings(), loadTransactions()]);
+    const [settings, transactions, logs, profiles] = await Promise.all([
+      loadSettings(),
+      loadTransactions(),
+      withLogs && state.profile.role === 'developer' ? loadInputLogs(state.month) : Promise.resolve(null),
+      withUsers && state.profile.role === 'developer' ? loadWorkspaceUsers() : Promise.resolve(null),
+    ]);
     if (state.session?.user?.id !== userId) return;
     state.settings = settings;
     state.transactions = transactions;
-    if (withLogs && state.profile.role === 'developer') state.inputLogs = await loadInputLogs(state.month);
+    if (logs) state.inputLogs = logs;
+    if (profiles) state.profiles = profiles;
   } catch (error) {
     if (state.session?.user?.id === userId) state.error = message(error);
   } finally {
@@ -64,6 +71,7 @@ async function activateSession(session) {
   state.modal = null;
   state.error = '';
   state.inputLogs = [];
+  state.profiles = [];
   state.transactions = [];
   state.settings = null;
   setWorkspaceId(null);
@@ -116,10 +124,10 @@ async function handleClick(event) {
   if (!button) return;
   const { act, tab } = button.dataset;
   if (act === 'navigate') {
-    if (tab === 'logs-input' && state.profile?.role !== 'developer') return;
+    if (['logs-input', 'accounts'].includes(tab) && state.profile?.role !== 'developer') return;
     state.tab = tab;
     state.search = '';
-    await loadData({ withLogs: tab === 'logs-input' });
+    await loadData({ withLogs: tab === 'logs-input', withUsers: tab === 'accounts' });
     return;
   }
   if (act === 'auth-mode') {
@@ -157,7 +165,10 @@ async function handleClick(event) {
     return;
   }
   if (act === 'export') { exportCsv(); return; }
-  if (act === 'retry') { await loadData({ withLogs: state.tab === 'logs-input' }); return; }
+  if (act === 'retry') {
+    await loadData({ withLogs: state.tab === 'logs-input', withUsers: state.tab === 'accounts' });
+    return;
+  }
   if (act === 'signout') {
     if (supabase) await supabase.auth.signOut();
   }
@@ -215,6 +226,29 @@ async function handleSubmit(event) {
     } catch (error) {
       state.authMessage = message(error);
       state.authMessageType = 'warn';
+    } finally {
+      state.busy = false;
+      render();
+    }
+    return;
+  }
+  if (form.dataset.form === 'account-role') {
+    if (state.profile?.role !== 'developer') return;
+    const values = Object.fromEntries(new FormData(form).entries());
+    state.busy = true;
+    render();
+    try {
+      await setWorkspaceUserRole(values.user_id, values.role);
+      const [profiles, logs] = await Promise.all([
+        loadWorkspaceUsers(),
+        loadInputLogs(state.month),
+      ]);
+      state.profiles = profiles;
+      state.inputLogs = logs;
+      state.error = '';
+      notify('Akses akun berhasil diperbarui.');
+    } catch (error) {
+      notify(message(error), 'error');
     } finally {
       state.busy = false;
       render();

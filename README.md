@@ -44,6 +44,10 @@ where p.id = u.id
 
 Role dan akses workspace dikelola melalui Supabase SQL Editor. Log input hanya bisa dibaca oleh developer; kebijakan Row Level Security Supabase tetap menolak pembacaan dari akun staff, termasuk bila endpoint dipanggil langsung.
 
+Developer dapat mengelola akun berikutnya dari menu **Akun & akses**. Akun yang mendaftar muncul sebagai *Menunggu akses*; pilih role lalu tekan **Berikan akses**. Perubahan role akun aktif memakai tombol **Simpan role**. Akun developer yang sedang masuk tidak dapat mengubah rolenya sendiri.
+
+Jika database sudah dibuat sebelum pengelolaan akun tersedia, jalankan `supabase/migrations/20261015_developer_account_access.sql` di SQL Editor. Untuk instalasi baru, fungsi tersebut sudah ada di `supabase/schema.sql`.
+
 ## Kategori kas
 
 Material; Upah / Kasbon Tukang; Upah Staff Pelaksana; Upah Tim Spesialis; Alat; Operasional; Subcont; Listrik; Lain-Lain; Fee; Kk; Pajak; Atk; Aset; Cost Subcont; Cost Listrik; Cost Lain Lain.

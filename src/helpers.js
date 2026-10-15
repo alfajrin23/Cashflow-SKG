@@ -7,6 +7,7 @@ export const CASH_CATEGORIES = [
 const paths = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-6H9v6H4a1 1 0 0 1-1-1Z"/>',
   wallet: '<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M16 14h.01"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 8v6m3-3h-6"/>',
   plus: '<path d="M12 5v14m-7-7h14"/>',
   arrow: '<path d="m7 17 10-10M7 7h10v10"/>',
   chart: '<path d="M3 3v18h18M18 17V9m-5 8V5m-5 12v-5"/>',
