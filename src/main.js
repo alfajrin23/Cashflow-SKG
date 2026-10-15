@@ -3,7 +3,7 @@ import {
   loadTransactions, loadWorkspaceUsers, saveSettings, saveTransaction,
   setWorkspaceId, setWorkspaceUserRole, supabase,
 } from './db.js';
-import { today } from './helpers.js';
+import { formatAmountInput, parseAmountInput, today } from './helpers.js';
 import { renderApp } from './views.js';
 import './style.css';
 
@@ -176,6 +176,24 @@ async function handleClick(event) {
 
 function handleInput(event) {
   const target = event.target;
+  if (target.matches('[data-money-input]')) {
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? start;
+    const digitsBeforeStart = target.value.slice(0, start).replace(/\D/g, '').length;
+    const digitsBeforeEnd = target.value.slice(0, end).replace(/\D/g, '').length;
+    target.value = formatAmountInput(target.value);
+    const caretForDigits = (count) => {
+      if (count === 0) return 0;
+      let seen = 0;
+      for (let index = 0; index < target.value.length; index += 1) {
+        if (/\d/.test(target.value[index])) seen += 1;
+        if (seen === count) return index + 1;
+      }
+      return target.value.length;
+    };
+    target.setSelectionRange(caretForDigits(digitsBeforeStart), caretForDigits(digitsBeforeEnd));
+    return;
+  }
   if (target.matches('[data-filter="search"]')) {
     state.search = target.value;
     const start = target.selectionStart;
@@ -257,12 +275,16 @@ async function handleSubmit(event) {
   }
   if (form.dataset.form !== 'modal') return;
   const values = Object.fromEntries(new FormData(form).entries());
+  if (form.dataset.kind === 'transaction' && parseAmountInput(values.amount) < 1) {
+    notify('Nominal transaksi harus lebih dari 0.', 'error');
+    return;
+  }
   state.busy = true;
   render();
   try {
     if (form.dataset.kind === 'opening') {
       state.settings = await saveSettings({
-        opening_balance: Number(values.opening_balance) || 0,
+        opening_balance: parseAmountInput(values.opening_balance),
         opening_balance_date: values.opening_balance_date,
       });
       state.inputLogs = [];
@@ -273,7 +295,7 @@ async function handleSubmit(event) {
         category: values.category,
         requester: values.requester.trim(),
         description: values.description.trim(),
-        amount: Number(values.amount),
+        amount: parseAmountInput(values.amount),
       }, form.dataset.id || null);
       state.transactions = [row, ...state.transactions.filter((item) => item.id !== row.id)]
         .sort((a, b) => (b.transaction_date || '').localeCompare(a.transaction_date || ''));

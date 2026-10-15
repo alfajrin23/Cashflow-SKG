@@ -38,6 +38,10 @@ export const money = (value) => new Intl.NumberFormat('id-ID', {
 }).format(Number(value) || 0);
 
 export const number = (value) => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(Number(value) || 0);
+export const formatAmountInput = (value) => String(value ?? '')
+  .replace(/\D/g, '')
+  .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+export const parseAmountInput = (value) => Number(String(value ?? '').replace(/\D/g, '')) || 0;
 export const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
