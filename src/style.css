@@ -217,7 +217,7 @@ tbody tr:hover { background: #fbfaf6; }
 .invoice-period-control { display: inline-flex; align-items: center; gap: 8px; }
 .invoice-period-control > span { color: var(--muted); font-size: .68rem; font-weight: 700; }
 .invoice-period-control .select-compact { min-width: 150px; height: 40px; }
-.invoice-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 0 0 11px; }
+.invoice-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin: 0 0 11px; }
 .invoice-kpis article { display: grid; align-content: center; gap: 6px; min-height: 68px; min-width: 0; padding: 11px 13px; border: 1px solid #e8e5dc; border-radius: 12px; background: rgba(255, 254, 250, .94); }
 .invoice-kpis article:first-child { background: linear-gradient(110deg, #fffefa, #f4f7f1); }
 .invoice-kpis span { color: #869096; font-size: .62rem; font-weight: 700; }
@@ -337,6 +337,9 @@ tbody tr:hover { background: #fbfaf6; }
   .brand span { padding-left: 8px; }
   .account-email { max-width: 115px; }
   .workspace { width: min(100% - 38px, 1200px); }
+}
+@media (max-width: 1100px) {
+  .invoice-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
   .topbar { flex-wrap: wrap; min-height: auto; padding: 10px 16px 8px; }
