@@ -13,6 +13,7 @@ const state = {
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
   month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [],
   settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '',
+  expandedInvoiceCustomer: null,
   incomeWeek: '', incomePlanPeriod: 'week',
   loading: false, busy: false, error: '', modal: null, toast: null,
 };
@@ -130,7 +131,8 @@ function exportCsv() {
 
 function exportInvoicesCsv() {
   const term = state.search.trim().toLocaleLowerCase('id-ID');
-  const rows = state.invoices.filter((row) => (!state.invoiceStatus || statusForInvoice(row)[0] === state.invoiceStatus)
+  const rows = state.invoices.filter((row) => row.invoice_date?.slice(0, 7) === state.month
+    && (!state.invoiceStatus || statusForInvoice(row)[0] === state.invoiceStatus)
     && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term)));
   const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
   const lines = [['Customer', 'No. invoice', 'No. PO', 'Tanggal invoice', 'Jatuh tempo', 'Nilai invoice', 'Sudah dibayar', 'Sisa', 'Status'],
@@ -153,6 +155,7 @@ async function handleClick(event) {
     state.tab = tab;
     state.search = '';
     state.invoiceStatus = '';
+    if (tab === 'tagihan') state.expandedInvoiceCustomer = null;
     await loadData({ withLogs: tab === 'logs-input', withUsers: tab === 'accounts', withInvoices: tab === 'tagihan' });
     return;
   }
@@ -167,6 +170,27 @@ async function handleClick(event) {
   if (act === 'edit-invoice') {
     const row = state.invoices.find((item) => item.id === button.dataset.id);
     if (row) openInvoice(row);
+    return;
+  }
+  if (act === 'toggle-invoice-customer') {
+    const key = button.dataset.customerKey;
+    const isOpen = state.expandedInvoiceCustomer === key
+      || (state.expandedInvoiceCustomer === null && button.dataset.defaultOpen === 'true');
+    state.expandedInvoiceCustomer = isOpen ? '' : key;
+    render();
+    return;
+  }
+  if (act === 'record-customer-payment') {
+    const key = button.dataset.customerKey;
+    const rows = state.invoices.filter((row) => String(row.customer || 'Customer belum dicatat').trim().toLocaleLowerCase('id-ID') === key
+      && Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0) > 0)
+      .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '') || (a.invoice_date || '').localeCompare(b.invoice_date || ''));
+    if (!rows.length) return;
+    state.expandedInvoiceCustomer = key;
+    state.modal = rows.length === 1
+      ? { type: 'invoice-payment', row: rows[0] }
+      : { type: 'customer-payment', row: { customer: button.dataset.customer, customerKey: key } };
+    render();
     return;
   }
   if (act === 'record-invoice-payment') {
@@ -255,6 +279,12 @@ function handleInput(event) {
 
 async function handleChange(event) {
   const target = event.target;
+  if (target.matches('[data-customer-payment-invoice]')) {
+    const invoice = state.invoices.find((row) => row.id === target.value);
+    const amountInput = target.form?.querySelector('[name="payment_amount"]');
+    if (invoice && amountInput) amountInput.value = formatAmountInput(Math.max(Number(invoice.amount || 0) - Number(invoice.paid_amount || 0), 0));
+    return;
+  }
   if (target.matches('[data-filter="month"]')) {
     if (!target.value) return;
     state.month = target.value;
@@ -350,6 +380,14 @@ async function handleSubmit(event) {
     if (payment < 1) { notify('Nominal pembayaran harus lebih dari 0.', 'error'); return; }
     if (payment > balance) { notify(`Pembayaran melebihi sisa invoice Rp ${balance.toLocaleString('id-ID')}.`, 'error'); return; }
   }
+  if (form.dataset.kind === 'customer-payment') {
+    const invoice = state.invoices.find((row) => row.id === values.invoice_id);
+    const balance = Math.max(Number(invoice?.amount || 0) - Number(invoice?.paid_amount || 0), 0);
+    const payment = parseAmountInput(values.payment_amount);
+    if (!invoice) { notify('Invoice tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
+    if (payment < 1) { notify('Nominal pembayaran harus lebih dari 0.', 'error'); return; }
+    if (payment > balance) { notify(`Pembayaran melebihi sisa invoice Rp ${balance.toLocaleString('id-ID')}.`, 'error'); return; }
+  }
   state.busy = true;
   render();
   try {
@@ -374,8 +412,9 @@ async function handleSubmit(event) {
         .sort((a, b) => (a.customer || '').localeCompare(b.customer || '', 'id-ID', { sensitivity: 'base' })
           || (a.invoice_date || '').localeCompare(b.invoice_date || ''));
       state.inputLogs = [];
-    } else if (form.dataset.kind === 'invoice-payment') {
-      const previous = state.invoices.find((item) => item.id === form.dataset.id);
+    } else if (['invoice-payment', 'customer-payment'].includes(form.dataset.kind)) {
+      const invoiceId = form.dataset.kind === 'customer-payment' ? values.invoice_id : form.dataset.id;
+      const previous = state.invoices.find((item) => item.id === invoiceId);
       const invoice = await saveInvoice({
         paid_amount: Number(previous.paid_amount || 0) + parseAmountInput(values.payment_amount),
         paid_date: values.paid_date,
@@ -398,7 +437,7 @@ async function handleSubmit(event) {
     state.modal = null;
     state.busy = false;
     render();
-    notify(form.dataset.kind === 'invoice-payment' ? 'Pembayaran invoice berhasil dicatat.'
+    notify(['invoice-payment', 'customer-payment'].includes(form.dataset.kind) ? 'Pembayaran invoice berhasil dicatat.'
       : form.dataset.kind === 'invoice' ? (form.dataset.id ? 'Perubahan invoice berhasil disimpan.' : 'Invoice berhasil disimpan.')
         : form.dataset.id ? 'Perubahan berhasil disimpan.' : 'Data berhasil disimpan.');
   } catch (error) {
