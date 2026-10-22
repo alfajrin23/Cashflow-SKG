@@ -200,6 +200,8 @@ tbody tr:hover { background: #fbfaf6; }
 .flow-pill.income { background: #e9f3e8; color: #287443; }
 .flow-pill.expense { background: #fbefea; color: #b14b3d; }
 .invoice-status { display: inline-flex; padding: 5px 9px; border: 1px solid transparent; border-radius: 99px; font-size: .63rem; font-weight: 800; white-space: nowrap; }
+.invoice-status-action { align-items: center; justify-content: center; background: transparent; cursor: pointer; font-family: inherit; }
+.invoice-status-action:hover { filter: brightness(.96); box-shadow: 0 0 0 2px rgba(32, 60, 99, .08); }
 .status-paid { border-color: #cde3d5; background: #edf6f0; color: #337656; }
 .status-late { border-color: #f0d9ad; background: #fff5df; color: #946821; }
 .status-open { border-color: #efd0d0; background: #fbefef; color: #a34447; }
@@ -252,17 +254,24 @@ tbody tr:hover { background: #fbfaf6; }
 .invoice-customer-actions .text-button svg { transform: rotate(90deg); }
 .invoice-settled { color: #39805c; font-size: .62rem; font-weight: 800; }
 .invoice-customer-detail { padding: 0 8px 8px; }
-.invoice-customer-detail .table-wrap { border-radius: 9px; }
-.invoice-customer-detail table { font-size: .62rem; }
-.invoice-customer-detail th { padding: 8px 7px; font-size: .52rem; letter-spacing: .04em; }
-.invoice-customer-detail td { padding: 7px; font-size: .6rem; }
-.invoice-customer-detail .numeric { font-size: .58rem; }
-.invoice-detail-description { min-width: 145px; }
+.invoice-customer-detail .table-wrap { overflow-x: hidden; border-radius: 9px; }
+.invoice-customer-detail table { width: 100%; table-layout: fixed; font-size: .62rem; }
+.invoice-customer-detail th { padding: 8px 5px; font-size: .5rem; letter-spacing: .025em; white-space: normal; overflow-wrap: anywhere; }
+.invoice-customer-detail td { padding: 7px 5px; font-size: .58rem; overflow-wrap: anywhere; }
+.invoice-customer-detail th:nth-child(1), .invoice-customer-detail td:nth-child(1) { width: 10%; }
+.invoice-customer-detail th:nth-child(2), .invoice-customer-detail td:nth-child(2) { width: 23%; }
+.invoice-customer-detail th:nth-child(3), .invoice-customer-detail td:nth-child(3),
+.invoice-customer-detail th:nth-child(4), .invoice-customer-detail td:nth-child(4),
+.invoice-customer-detail th:nth-child(5), .invoice-customer-detail td:nth-child(5) { width: 14%; }
+.invoice-customer-detail th:nth-child(6), .invoice-customer-detail td:nth-child(6) { width: 13%; }
+.invoice-customer-detail th:nth-child(7), .invoice-customer-detail td:nth-child(7) { width: 11%; }
+.invoice-customer-detail .numeric { font-size: .55rem; white-space: normal; overflow-wrap: anywhere; }
+.invoice-detail-description { min-width: 0; }
 .invoice-detail-description strong, .invoice-detail-description small { display: block; }
-.invoice-detail-description strong { color: #465b6b; font-size: .6rem; }
+.invoice-detail-description strong { color: #465b6b; font-size: .58rem; overflow-wrap: anywhere; }
 .invoice-detail-description small { margin-top: 3px; color: #879197; font-size: .53rem; line-height: 1.4; }
-.invoice-customer-detail .invoice-status { padding: 4px 6px; font-size: .52rem; }
-.invoice-customer-detail .row-actions .icon-button { width: 25px; height: 25px; }
+.invoice-customer-detail .invoice-status { max-width: 100%; padding: 4px 5px; font-size: .5rem; white-space: normal; text-align: center; }
+.invoice-customer-detail .row-actions .icon-button { width: 22px; height: 22px; padding: 3px; }
 .invoice-planning { margin-top: 12px; }
 .invoice-planning > summary { width: fit-content; color: #71808a; cursor: pointer; font-size: .67rem; font-weight: 700; }
 .invoice-planning[open] > summary { margin-bottom: 9px; }
@@ -407,4 +416,19 @@ tbody tr:hover { background: #fbfaf6; }
   .invoice-customer-balances { grid-template-columns: 1fr; gap: 5px; }
   .invoice-customer-balances > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .invoice-customer-balances strong { text-align: right; }
+}
+@media (max-width: 760px) {
+  .invoice-customer-detail .table-wrap { overflow: visible; border: 0; }
+  .invoice-customer-detail table, .invoice-customer-detail tbody { display: block; }
+  .invoice-customer-detail thead { display: none; }
+  .invoice-customer-detail tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 8px; overflow: hidden; border: 1px solid #e8e5dc; border-radius: 9px; }
+  .invoice-customer-detail tbody td { display: flex; flex-direction: column; align-items: flex-start; width: auto !important; min-width: 0; padding: 8px; border: 0; border-bottom: 1px solid #efede6; text-align: left; }
+  .invoice-customer-detail tbody td::before { content: attr(data-label); margin-bottom: 4px; color: #879197; font-size: .52rem; font-weight: 800; }
+  .invoice-customer-detail tbody td.invoice-detail-description { grid-column: 1 / -1; }
+  .invoice-customer-detail tbody td.numeric { font-size: .58rem; text-align: left; }
+  .invoice-customer-detail tbody td[data-label="Status"] { justify-content: center; }
+  .invoice-customer-detail tbody td[data-label="Status"]::before { align-self: flex-start; }
+  .invoice-customer-detail tbody td.row-actions { grid-column: 1 / -1; display: flex; flex-direction: row; align-items: center; gap: 6px; border-bottom: 0; white-space: normal; }
+  .invoice-customer-detail tbody td.row-actions::before { margin: 0 auto 0 0; }
+  .invoice-customer-detail tbody td.quiet-empty { display: block; grid-column: 1 / -1; }
 }

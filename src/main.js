@@ -257,6 +257,14 @@ async function handleClick(event) {
     if (row) { state.modal = { type: 'invoice-payment', row }; render(); }
     return;
   }
+  if (act === 'confirm-invoice-paid') {
+    const row = state.invoices.find((item) => item.id === button.dataset.id);
+    if (row && Number(row.paid_amount || 0) < Number(row.amount || 0)) {
+      state.modal = { type: 'confirm-invoice-paid', row };
+      render();
+    }
+    return;
+  }
   if (act === 'delete-invoice') {
     const row = state.invoices.find((item) => item.id === button.dataset.id);
     if (!row || !window.confirm(`Hapus invoice ${row.invoice_number} milik ${row.customer}?`)) return;
@@ -466,6 +474,7 @@ async function handleSubmit(event) {
     if (!contract) { notify('Kontrak tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
     if (!values.invoice_number.trim()) { notify('Nomor invoice wajib diisi.', 'error'); return; }
     if (amount < 1) { notify('Nominal pembayaran harus lebih dari 0.', 'error'); return; }
+    if (!['paid', 'unpaid'].includes(values.payment_status)) { notify('Pilih status pembayaran.', 'error'); return; }
     if (amount > remaining) { notify(`Nominal melebihi sisa kontrak Rp ${remaining.toLocaleString('id-ID')}.`, 'error'); return; }
     if (state.invoices.some((invoice) => normalizedCustomer(invoice.invoice_number) === normalizedCustomer(values.invoice_number))) {
       notify('Nomor invoice tersebut sudah digunakan.', 'error');
@@ -492,6 +501,15 @@ async function handleSubmit(event) {
     const contract = contractForInvoice(invoice);
     if (contract && payment > contractRemaining(contract)) { notify('Pembayaran melebihi sisa kontrak.', 'error'); return; }
   }
+  if (form.dataset.kind === 'confirm-invoice-paid') {
+    const invoice = state.invoices.find((row) => row.id === form.dataset.id);
+    if (!invoice) { notify('Invoice tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
+    const payment = Math.max(Number(invoice.amount || 0) - Number(invoice.paid_amount || 0), 0);
+    const contract = contractForInvoice(invoice);
+    if (payment < 1) { notify('Invoice ini sudah lunas.', 'error'); return; }
+    if (contract && payment > contractRemaining(contract)) { notify('Pembayaran melebihi sisa kontrak.', 'error'); return; }
+    if (!values.paid_date) { notify('Tanggal pembayaran wajib diisi.', 'error'); return; }
+  }
   state.busy = true;
   render();
   try {
@@ -513,16 +531,17 @@ async function handleSubmit(event) {
     } else if (form.dataset.kind === 'contract-payment') {
       const contract = state.contracts.find((item) => item.id === form.dataset.contractId);
       const amount = parseAmountInput(values.amount);
+      const isPaid = values.payment_status === 'paid';
       const invoice = await saveInvoice({
         contract_id: contract.id,
         invoice_date: values.invoice_date,
         due_date: null,
-        paid_date: values.invoice_date,
+        paid_date: isPaid ? values.invoice_date : null,
         customer: contract.customer,
         invoice_number: values.invoice_number.trim(),
         po_number: values.po_number.trim(),
         amount,
-        paid_amount: amount,
+        paid_amount: isPaid ? amount : 0,
       });
       state.invoices = [...state.invoices, invoice]
         .sort((a, b) => (a.customer || '').localeCompare(b.customer || '', 'id-ID', { sensitivity: 'base' })
@@ -552,6 +571,14 @@ async function handleSubmit(event) {
       }, previous.id);
       state.invoices = state.invoices.map((item) => item.id === invoice.id ? invoice : item);
       state.inputLogs = [];
+    } else if (form.dataset.kind === 'confirm-invoice-paid') {
+      const previous = state.invoices.find((item) => item.id === form.dataset.id);
+      const invoice = await saveInvoice({
+        paid_amount: Number(previous.amount || 0),
+        paid_date: values.paid_date,
+      }, previous.id);
+      state.invoices = state.invoices.map((item) => item.id === invoice.id ? invoice : item);
+      state.inputLogs = [];
     } else {
       const row = await saveTransaction({
         transaction_date: values.transaction_date,
@@ -570,6 +597,7 @@ async function handleSubmit(event) {
     render();
     notify(form.dataset.kind === 'contract' ? (form.dataset.id ? 'Nilai kontrak berhasil diperbarui.' : 'Kontrak berhasil disimpan.')
       : form.dataset.kind === 'contract-payment' ? 'Pembayaran kontrak berhasil dicatat.'
+        : form.dataset.kind === 'confirm-invoice-paid' ? 'Status invoice diperbarui menjadi lunas.'
         : ['invoice-payment', 'customer-payment'].includes(form.dataset.kind) ? 'Pembayaran invoice berhasil dicatat.'
       : form.dataset.kind === 'invoice' ? (form.dataset.id ? 'Perubahan invoice berhasil disimpan.' : 'Invoice berhasil disimpan.')
         : form.dataset.id ? 'Perubahan berhasil disimpan.' : 'Data berhasil disimpan.');
