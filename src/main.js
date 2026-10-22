@@ -1,6 +1,6 @@
 import {
-  deleteInvoice, deleteTransaction, isConfigured, loadInputLogs, loadInvoices, loadProfile, loadSettings,
-  loadTransactions, loadWorkspaceUsers, saveInvoice, saveSettings, saveTransaction,
+  deleteInvoice, deleteTransaction, isConfigured, loadCustomerContracts, loadInputLogs, loadInvoices, loadProfile, loadSettings,
+  loadTransactions, loadWorkspaceUsers, saveCustomerContract, saveInvoice, saveSettings, saveTransaction,
   setWorkspaceId, setWorkspaceUserRole, supabase,
 } from './db.js';
 import { formatAmountInput, parseAmountInput, statusForInvoice, today } from './helpers.js';
@@ -11,7 +11,7 @@ const now = today();
 const state = {
   configured: isConfigured, session: null, profile: null, profileLoading: false,
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
-  month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [],
+  month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [], contracts: [],
   settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '',
   expandedInvoiceCustomer: null, invoicePeriod: '',
   incomeWeek: '', incomePlanPeriod: 'week',
@@ -45,12 +45,13 @@ async function loadData({ withLogs = false, withUsers = false, withInvoices = fa
   state.error = '';
   render();
   try {
-    const [settings, transactions, logs, profiles, invoices] = await Promise.all([
+    const [settings, transactions, logs, profiles, invoices, contracts] = await Promise.all([
       loadSettings(),
       loadTransactions(),
       withLogs && state.profile.role === 'developer' ? loadInputLogs(state.month) : Promise.resolve(null),
       withUsers && state.profile.role === 'developer' ? loadWorkspaceUsers() : Promise.resolve(null),
       withInvoices ? loadInvoices() : Promise.resolve(null),
+      withInvoices ? loadCustomerContracts() : Promise.resolve(null),
     ]);
     if (state.session?.user?.id !== userId) return;
     state.settings = settings;
@@ -58,6 +59,7 @@ async function loadData({ withLogs = false, withUsers = false, withInvoices = fa
     if (logs) state.inputLogs = logs;
     if (profiles) state.profiles = profiles;
     if (invoices) state.invoices = invoices;
+    if (contracts) state.contracts = contracts;
   } catch (error) {
     if (state.session?.user?.id === userId) state.error = message(error);
   } finally {
@@ -78,6 +80,7 @@ async function activateSession(session) {
   state.profiles = [];
   state.transactions = [];
   state.invoices = [];
+  state.contracts = [];
   state.settings = null;
   setWorkspaceId(null);
   if (!session) {
@@ -117,6 +120,30 @@ function openInvoice(row = {}) {
   render();
 }
 
+function normalizedCustomer(value) {
+  return String(value || '').trim().toLocaleLowerCase('id-ID');
+}
+
+function contractInvoices(contract) {
+  const key = normalizedCustomer(contract.customer);
+  return state.invoices.filter((row) => row.contract_id === contract.id
+    || (!row.contract_id && normalizedCustomer(row.customer) === key));
+}
+
+function contractForInvoice(invoice) {
+  const customer = normalizedCustomer(invoice.customer);
+  return state.contracts.find((contract) => contract.id === invoice.contract_id
+    || (!invoice.contract_id && normalizedCustomer(contract.customer) === customer));
+}
+
+function contractPaidAmount(contract) {
+  return contractInvoices(contract).reduce((total, row) => total + Number(row.paid_amount || 0), 0);
+}
+
+function contractRemaining(contract) {
+  return Math.max(Number(contract.contract_amount || 0) - contractPaidAmount(contract), 0);
+}
+
 function exportCsv() {
   const filtered = state.transactions.filter((row) => row.transaction_date?.slice(0, 7) === state.month
     && (!state.category || row.category === state.category)
@@ -135,9 +162,18 @@ function exportCsv() {
 
 function exportInvoicesCsv() {
   const term = state.search.trim().toLocaleLowerCase('id-ID');
-  const rows = state.invoices.filter((row) => (!state.invoicePeriod || row.invoice_date?.slice(0, 7) === state.invoicePeriod)
-    && (!state.invoiceStatus || statusForInvoice(row)[0] === state.invoiceStatus)
-    && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term)));
+  const rows = state.invoices.filter((row) => {
+    const contract = contractForInvoice(row);
+    const remaining = contract ? contractRemaining(contract) : 0;
+    const matchesStatus = !state.invoiceStatus
+      || (state.invoiceStatus === 'open' && contract && remaining > 0)
+      || (state.invoiceStatus === 'partial' && contract && contractPaidAmount(contract) > 0 && remaining > 0)
+      || (state.invoiceStatus === 'paid' && contract && remaining === 0)
+      || (state.invoiceStatus === 'late' && statusForInvoice(row)[0] === 'late');
+    return (!state.invoicePeriod || row.invoice_date?.slice(0, 7) === state.invoicePeriod)
+      && matchesStatus
+      && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term));
+  });
   const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
   const lines = [['Customer', 'No. invoice', 'No. PO', 'Tanggal invoice', 'Jatuh tempo', 'Nilai invoice', 'Sudah dibayar', 'Sisa', 'Status'],
     ...rows.map((row) => [row.customer, row.invoice_number, row.po_number, row.invoice_date, row.due_date,
@@ -170,7 +206,20 @@ async function handleClick(event) {
     return;
   }
   if (act === 'new-transaction') { openTransaction(); return; }
-  if (act === 'new-invoice') { openInvoice(); return; }
+  if (act === 'new-customer-contract') {
+    state.modal = { type: 'contract', row: { customer: button.dataset.customer || '' } };
+    render();
+    return;
+  }
+  if (act === 'new-contract') { state.modal = { type: 'contract', row: {} }; render(); return; }
+  if (act === 'record-contract-payment') {
+    const contract = state.contracts.find((item) => item.id === button.dataset.contractId);
+    if (contract && contractRemaining(contract) > 0) {
+      state.modal = { type: 'contract-payment', row: contract };
+      render();
+    }
+    return;
+  }
   if (act === 'edit-invoice') {
     const row = state.invoices.find((item) => item.id === button.dataset.id);
     if (row) openInvoice(row);
@@ -381,6 +430,35 @@ async function handleSubmit(event) {
     if (amount < 1) { notify('Nilai invoice harus lebih dari 0.', 'error'); return; }
     if (paidAmount > amount) { notify('Pembayaran tidak boleh melebihi nilai invoice.', 'error'); return; }
     if (paidAmount > 0 && !values.paid_date) { notify('Tanggal pembayaran wajib diisi jika ada pembayaran.', 'error'); return; }
+    const previous = state.invoices.find((invoice) => invoice.id === form.dataset.id);
+    const contract = previous ? contractForInvoice(previous) : null;
+    if (contract && contractPaidAmount(contract) - Number(previous.paid_amount || 0) + paidAmount > Number(contract.contract_amount || 0)) {
+      notify('Jumlah pembayaran akan melebihi nilai kontrak.', 'error');
+      return;
+    }
+  }
+  if (form.dataset.kind === 'contract') {
+    const customer = values.customer.trim();
+    const amount = parseAmountInput(values.contract_amount);
+    if (!customer) { notify('Nama customer wajib diisi.', 'error'); return; }
+    if (amount < 1) { notify('Nilai kontrak harus lebih dari 0.', 'error'); return; }
+    if (state.contracts.some((contract) => normalizedCustomer(contract.customer) === normalizedCustomer(customer))) {
+      notify('Kontrak untuk customer ini sudah ada.', 'error');
+      return;
+    }
+  }
+  if (form.dataset.kind === 'contract-payment') {
+    const contract = state.contracts.find((item) => item.id === form.dataset.contractId);
+    const amount = parseAmountInput(values.amount);
+    const remaining = contract ? contractRemaining(contract) : 0;
+    if (!contract) { notify('Kontrak tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
+    if (!values.invoice_number.trim()) { notify('Nomor invoice wajib diisi.', 'error'); return; }
+    if (amount < 1) { notify('Nominal pembayaran harus lebih dari 0.', 'error'); return; }
+    if (amount > remaining) { notify(`Nominal melebihi sisa kontrak Rp ${remaining.toLocaleString('id-ID')}.`, 'error'); return; }
+    if (state.invoices.some((invoice) => normalizedCustomer(invoice.invoice_number) === normalizedCustomer(values.invoice_number))) {
+      notify('Nomor invoice tersebut sudah digunakan.', 'error');
+      return;
+    }
   }
   if (form.dataset.kind === 'invoice-payment') {
     const invoice = state.invoices.find((row) => row.id === form.dataset.id);
@@ -389,6 +467,8 @@ async function handleSubmit(event) {
     if (!invoice) { notify('Invoice tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
     if (payment < 1) { notify('Nominal pembayaran harus lebih dari 0.', 'error'); return; }
     if (payment > balance) { notify(`Pembayaran melebihi sisa invoice Rp ${balance.toLocaleString('id-ID')}.`, 'error'); return; }
+    const contract = contractForInvoice(invoice);
+    if (contract && payment > contractRemaining(contract)) { notify('Pembayaran melebihi sisa kontrak.', 'error'); return; }
   }
   if (form.dataset.kind === 'customer-payment') {
     const invoice = state.invoices.find((row) => row.id === values.invoice_id);
@@ -397,6 +477,8 @@ async function handleSubmit(event) {
     if (!invoice) { notify('Invoice tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
     if (payment < 1) { notify('Nominal pembayaran harus lebih dari 0.', 'error'); return; }
     if (payment > balance) { notify(`Pembayaran melebihi sisa invoice Rp ${balance.toLocaleString('id-ID')}.`, 'error'); return; }
+    const contract = contractForInvoice(invoice);
+    if (contract && payment > contractRemaining(contract)) { notify('Pembayaran melebihi sisa kontrak.', 'error'); return; }
   }
   state.busy = true;
   render();
@@ -406,6 +488,32 @@ async function handleSubmit(event) {
         opening_balance: parseAmountInput(values.opening_balance),
         opening_balance_date: values.opening_balance_date,
       });
+      state.inputLogs = [];
+    } else if (form.dataset.kind === 'contract') {
+      const contract = await saveCustomerContract({
+        customer: values.customer.trim(),
+        contract_amount: parseAmountInput(values.contract_amount),
+      });
+      state.contracts = [...state.contracts, contract]
+        .sort((a, b) => a.customer.localeCompare(b.customer, 'id-ID', { sensitivity: 'base' }));
+      state.inputLogs = [];
+    } else if (form.dataset.kind === 'contract-payment') {
+      const contract = state.contracts.find((item) => item.id === form.dataset.contractId);
+      const amount = parseAmountInput(values.amount);
+      const invoice = await saveInvoice({
+        contract_id: contract.id,
+        invoice_date: values.invoice_date,
+        due_date: null,
+        paid_date: values.invoice_date,
+        customer: contract.customer,
+        invoice_number: values.invoice_number.trim(),
+        po_number: values.po_number.trim(),
+        amount,
+        paid_amount: amount,
+      });
+      state.invoices = [...state.invoices, invoice]
+        .sort((a, b) => (a.customer || '').localeCompare(b.customer || '', 'id-ID', { sensitivity: 'base' })
+          || (a.invoice_date || '').localeCompare(b.invoice_date || ''));
       state.inputLogs = [];
     } else if (form.dataset.kind === 'invoice') {
       const invoice = await saveInvoice({
@@ -447,7 +555,9 @@ async function handleSubmit(event) {
     state.modal = null;
     state.busy = false;
     render();
-    notify(['invoice-payment', 'customer-payment'].includes(form.dataset.kind) ? 'Pembayaran invoice berhasil dicatat.'
+    notify(form.dataset.kind === 'contract' ? 'Kontrak berhasil disimpan.'
+      : form.dataset.kind === 'contract-payment' ? 'Pembayaran kontrak berhasil dicatat.'
+        : ['invoice-payment', 'customer-payment'].includes(form.dataset.kind) ? 'Pembayaran invoice berhasil dicatat.'
       : form.dataset.kind === 'invoice' ? (form.dataset.id ? 'Perubahan invoice berhasil disimpan.' : 'Invoice berhasil disimpan.')
         : form.dataset.id ? 'Perubahan berhasil disimpan.' : 'Data berhasil disimpan.');
   } catch (error) {
