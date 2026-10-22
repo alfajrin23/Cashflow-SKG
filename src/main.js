@@ -13,7 +13,7 @@ const state = {
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
   month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [],
   settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '',
-  expandedInvoiceCustomer: null,
+  expandedInvoiceCustomer: null, invoicePeriod: '',
   incomeWeek: '', incomePlanPeriod: 'week',
   loading: false, busy: false, error: '', modal: null, toast: null,
 };
@@ -93,7 +93,11 @@ async function activateSession(session) {
     state.profile = profile;
     state.profileLoading = false;
     setWorkspaceId(profile.workspace_id);
-    if (profile.workspace_id) await loadData();
+    if (profile.workspace_id) await loadData({
+      withLogs: state.tab === 'logs-input',
+      withUsers: state.tab === 'accounts',
+      withInvoices: state.tab === 'tagihan',
+    });
     else render();
   } catch (error) {
     if (request !== authGeneration) return;
@@ -131,7 +135,7 @@ function exportCsv() {
 
 function exportInvoicesCsv() {
   const term = state.search.trim().toLocaleLowerCase('id-ID');
-  const rows = state.invoices.filter((row) => row.invoice_date?.slice(0, 7) === state.month
+  const rows = state.invoices.filter((row) => (!state.invoicePeriod || row.invoice_date?.slice(0, 7) === state.invoicePeriod)
     && (!state.invoiceStatus || statusForInvoice(row)[0] === state.invoiceStatus)
     && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term)));
   const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
@@ -292,6 +296,12 @@ async function handleChange(event) {
       try { state.inputLogs = await loadInputLogs(state.month); }
       catch (error) { state.error = message(error); }
     }
+    render();
+    return;
+  }
+  if (target.matches('[data-filter="invoicePeriod"]')) {
+    state.invoicePeriod = target.value;
+    state.expandedInvoiceCustomer = null;
     render();
     return;
   }

@@ -212,7 +212,9 @@ tbody tr:hover { background: #fbfaf6; }
 .invoice-page .page-heading { align-items: flex-end; margin-top: 1px; margin-bottom: 16px; }
 .invoice-page-eyebrow { color: #c92331; }
 .invoice-heading-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
-.invoice-heading-actions .month-control { min-height: 40px; }
+.invoice-period-control { display: inline-flex; align-items: center; gap: 8px; }
+.invoice-period-control > span { color: var(--muted); font-size: .68rem; font-weight: 700; }
+.invoice-period-control .select-compact { min-width: 150px; height: 40px; }
 .invoice-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 0 0 11px; }
 .invoice-kpis article { display: grid; align-content: center; gap: 6px; min-height: 68px; min-width: 0; padding: 11px 13px; border: 1px solid #e8e5dc; border-radius: 12px; background: rgba(255, 254, 250, .94); }
 .invoice-kpis article:first-child { background: linear-gradient(110deg, #fffefa, #f4f7f1); }
@@ -344,7 +346,8 @@ tbody tr:hover { background: #fbfaf6; }
   .page-heading h1 { font-size: 1.65rem; }
   .invoice-page .page-heading { gap: 12px; }
   .invoice-heading-actions { width: 100%; }
-  .invoice-heading-actions .month-control { flex: 1 1 100%; justify-content: space-between; }
+  .invoice-period-control { flex: 1 1 100%; justify-content: space-between; }
+  .invoice-period-control .select-compact { flex: 1; }
   .invoice-heading-actions .button { flex: 1; }
   .invoice-kpis { gap: 7px; }
   .invoice-kpis article { min-height: 62px; padding: 9px; }
