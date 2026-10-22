@@ -63,6 +63,37 @@ export async function deleteTransaction(id) {
   if (error) throw error;
 }
 
+export async function loadInvoices() {
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from('cashflow_invoices')
+      .select('id, invoice_date, due_date, paid_date, customer, invoice_number, po_number, amount, paid_amount, created_at')
+      .order('customer', { ascending: true })
+      .order('invoice_date', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
+export async function saveInvoice(values, id) {
+  const query = id
+    ? supabase.from('cashflow_invoices').update(values).eq('id', id)
+    : supabase.from('cashflow_invoices').insert({ ...values, workspace_id: workspaceId });
+  const { data, error } = await query
+    .select('id, invoice_date, due_date, paid_date, customer, invoice_number, po_number, amount, paid_amount, created_at')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteInvoice(id) {
+  const { error } = await supabase.from('cashflow_invoices').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function loadInputLogs(month) {
   const [year, monthNumber] = month.split('-').map(Number);
   const from = new Date(Date.UTC(year, monthNumber - 1, 1)).toISOString();

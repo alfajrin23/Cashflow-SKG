@@ -127,6 +127,28 @@ button:disabled { opacity: .52; cursor: wait; }
 .panel-heading h2 { margin: 0 0 4px; font: 800 1.05rem/1.25 Manrope, sans-serif; letter-spacing: -.035em; }
 .panel-heading p:not(.eyebrow) { max-width: 720px; margin: 3px 0 0; color: #829098; font-size: .76rem; line-height: 1.55; }
 .panel-footer { display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid #eeece5; }
+.income-plan-panel { margin-bottom: 15px; }
+.income-plan-panel .panel-heading { align-items: flex-end; margin-bottom: 13px; }
+.income-plan-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.income-week-control { display: inline-flex; align-items: center; gap: 9px; min-height: 36px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 99px; background: rgba(255, 254, 250, .72); color: var(--muted); font-size: .7rem; font-weight: 700; }
+.income-week-control select { max-width: 240px; padding: 0; border: 0; background: transparent; color: var(--navy); font-size: .72rem; font-weight: 700; }
+.income-plan-cards { margin-bottom: 12px; }
+.income-plan-cards .metric-card { min-height: 120px; }
+.income-week-detail { padding: 15px 17px; border: 1px solid #e8e5dc; border-radius: 15px 15px 15px 6px; background: rgba(255, 254, 250, .68); }
+.income-week-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding-bottom: 11px; border-bottom: 1px solid #eeece5; }
+.income-week-detail-heading h3 { margin: 0 0 4px; font: 800 .88rem Manrope, sans-serif; }
+.income-week-detail-heading span { color: #879298; font-size: .67rem; }
+.income-week-detail-heading > strong { color: var(--green); font: 700 .88rem 'DM Mono', monospace; }
+.income-week-rows { display: grid; }
+.income-week-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid #efede6; }
+.income-week-row:last-child { border-bottom: 0; }
+.income-week-row strong, .income-week-row small { display: block; }
+.income-week-row strong { color: var(--ink); font-size: .74rem; }
+.income-week-row small { margin-top: 4px; color: #879298; font-size: .65rem; line-height: 1.45; }
+.income-week-row b { color: var(--ink); font: 600 .72rem 'DM Mono', monospace; white-space: nowrap; }
+.income-week-empty { margin: 0; padding: 15px 0 2px; color: #879298; font-size: .72rem; }
+.notice-info { border-color: #dce5e8; background: #f3f7f7; }
+.income-plan-panel .notice { margin: 12px 0 0; }
 
 .trend-chart { position: relative; display: flex; align-items: stretch; height: 164px; padding: 8px 5px 0 58px; }
 .chart-y { position: absolute; inset: 6px auto 25px 0; display: flex; flex-direction: column; justify-content: space-between; color: #8b969c; font: 500 .58rem 'DM Mono', monospace; }
@@ -177,6 +199,15 @@ tbody tr:hover { background: #fbfaf6; }
 .flow-pill { display: inline-flex; padding: 5px 8px; border-radius: 99px; font-size: .63rem; font-weight: 800; white-space: nowrap; }
 .flow-pill.income { background: #e9f3e8; color: #287443; }
 .flow-pill.expense { background: #fbefea; color: #b14b3d; }
+.invoice-status { display: inline-flex; padding: 5px 9px; border: 1px solid transparent; border-radius: 99px; font-size: .63rem; font-weight: 800; white-space: nowrap; }
+.status-paid { border-color: #cde3d5; background: #edf6f0; color: #337656; }
+.status-late { border-color: #f0d9ad; background: #fff5df; color: #946821; }
+.status-open { border-color: #efd0d0; background: #fbefef; color: #a34447; }
+.status-partial { border-color: #d8dfec; background: #eef2f8; color: #46638a; }
+.invoice-late { background: #fffaf0; }
+.invoice-paid { background: #f4f9f4; }
+.invoice-customer-heading td { border-top: 1px solid #e4dfd3; background: #f4f1e8; color: var(--navy); font-size: .76rem; font-weight: 800; letter-spacing: .02em; }
+.invoice-payment-button { color: #28764a; }
 .row-actions { white-space: nowrap; }
 .row-actions .icon-button { width: 29px; height: 29px; }
 .actions-heading { width: 82px; }
@@ -272,6 +303,12 @@ tbody tr:hover { background: #fbfaf6; }
   .metric-card > strong { margin-top: 12px; font-size: clamp(.9rem, 4vw, 1.14rem); }
   .metric-card > small { font-size: .62rem; }
   .panel { padding: 15px; border-radius: 18px 18px 18px 7px; }
+  .income-plan-panel .panel-heading { align-items: flex-start; flex-direction: column; }
+  .income-plan-filters { align-items: stretch; flex-direction: column; width: 100%; }
+  .income-week-control, .income-plan-filters .month-control { justify-content: space-between; width: 100%; }
+  .income-week-control select { flex: 1; max-width: none; text-align: right; }
+  .income-week-row { align-items: flex-start; }
+  .income-week-row b { padding-top: 1px; }
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .summary-item { padding: 12px; }
   .summary-item strong { font-size: .86rem; }

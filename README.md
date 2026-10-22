@@ -48,6 +48,8 @@ Developer dapat mengelola akun berikutnya dari menu **Akun & akses**. Akun yang 
 
 Jika database sudah dibuat sebelum pengelolaan akun tersedia, jalankan `supabase/migrations/20261015_developer_account_access.sql` di SQL Editor. Untuk instalasi baru, fungsi tersebut sudah ada di `supabase/schema.sql`.
 
+Menu **Tagihan** menyimpan invoice customer pada workspace Cashflow SKG. Jika database sudah berjalan, jalankan `supabase/migrations/20261023_customer_invoices.sql` di SQL Editor sebelum membuka menu tersebut. Instalasi baru sudah mendapat tabel ini dari `supabase/schema.sql`.
+
 ## Kategori kas
 
 Material; Upah / Kasbon Tukang; Upah Staff Pelaksana; Upah Tim Spesialis; Alat; Operasional; Subcont; Listrik; Lain-Lain; Fee; Kk; Pajak; Atk; Aset; Cost Subcont; Cost Listrik; Cost Lain Lain.

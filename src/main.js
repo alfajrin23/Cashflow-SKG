@@ -1,9 +1,9 @@
 import {
-  deleteTransaction, isConfigured, loadInputLogs, loadProfile, loadSettings,
-  loadTransactions, loadWorkspaceUsers, saveSettings, saveTransaction,
+  deleteInvoice, deleteTransaction, isConfigured, loadInputLogs, loadInvoices, loadProfile, loadSettings,
+  loadTransactions, loadWorkspaceUsers, saveInvoice, saveSettings, saveTransaction,
   setWorkspaceId, setWorkspaceUserRole, supabase,
 } from './db.js';
-import { formatAmountInput, parseAmountInput, today } from './helpers.js';
+import { formatAmountInput, parseAmountInput, statusForInvoice, today } from './helpers.js';
 import { renderApp } from './views.js';
 import './style.css';
 
@@ -11,8 +11,9 @@ const now = today();
 const state = {
   configured: isConfigured, session: null, profile: null, profileLoading: false,
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
-  month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [],
-  settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '',
+  month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [],
+  settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '',
+  incomeWeek: '', incomePlanPeriod: 'week',
   loading: false, busy: false, error: '', modal: null, toast: null,
 };
 const app = document.querySelector('#app');
@@ -36,24 +37,26 @@ function message(error) {
   return text;
 }
 
-async function loadData({ withLogs = false, withUsers = false } = {}) {
+async function loadData({ withLogs = false, withUsers = false, withInvoices = false } = {}) {
   if (!state.profile?.workspace_id) return;
   const userId = state.session?.user?.id;
   state.loading = true;
   state.error = '';
   render();
   try {
-    const [settings, transactions, logs, profiles] = await Promise.all([
+    const [settings, transactions, logs, profiles, invoices] = await Promise.all([
       loadSettings(),
       loadTransactions(),
       withLogs && state.profile.role === 'developer' ? loadInputLogs(state.month) : Promise.resolve(null),
       withUsers && state.profile.role === 'developer' ? loadWorkspaceUsers() : Promise.resolve(null),
+      withInvoices ? loadInvoices() : Promise.resolve(null),
     ]);
     if (state.session?.user?.id !== userId) return;
     state.settings = settings;
     state.transactions = transactions;
     if (logs) state.inputLogs = logs;
     if (profiles) state.profiles = profiles;
+    if (invoices) state.invoices = invoices;
   } catch (error) {
     if (state.session?.user?.id === userId) state.error = message(error);
   } finally {
@@ -73,6 +76,7 @@ async function activateSession(session) {
   state.inputLogs = [];
   state.profiles = [];
   state.transactions = [];
+  state.invoices = [];
   state.settings = null;
   setWorkspaceId(null);
   if (!session) {
@@ -103,6 +107,11 @@ function openTransaction(row = {}) {
   render();
 }
 
+function openInvoice(row = {}) {
+  state.modal = { type: 'invoice', row };
+  render();
+}
+
 function exportCsv() {
   const filtered = state.transactions.filter((row) => row.transaction_date?.slice(0, 7) === state.month
     && (!state.category || row.category === state.category)
@@ -119,6 +128,22 @@ function exportCsv() {
   URL.revokeObjectURL(link.href);
 }
 
+function exportInvoicesCsv() {
+  const term = state.search.trim().toLocaleLowerCase('id-ID');
+  const rows = state.invoices.filter((row) => (!state.invoiceStatus || statusForInvoice(row)[0] === state.invoiceStatus)
+    && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term)));
+  const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  const lines = [['Customer', 'No. invoice', 'No. PO', 'Tanggal invoice', 'Jatuh tempo', 'Nilai invoice', 'Sudah dibayar', 'Sisa', 'Status'],
+    ...rows.map((row) => [row.customer, row.invoice_number, row.po_number, row.invoice_date, row.due_date,
+      row.amount, row.paid_amount, Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0), statusForInvoice(row)[1]])];
+  const csv = '\ufeff' + lines.map((line) => line.map(quote).join(',')).join('\r\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  link.download = `tagihan-customer-${today()}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 async function handleClick(event) {
   const button = event.target.closest('[data-act]');
   if (!button) return;
@@ -127,7 +152,8 @@ async function handleClick(event) {
     if (['logs-input', 'accounts'].includes(tab) && state.profile?.role !== 'developer') return;
     state.tab = tab;
     state.search = '';
-    await loadData({ withLogs: tab === 'logs-input', withUsers: tab === 'accounts' });
+    state.invoiceStatus = '';
+    await loadData({ withLogs: tab === 'logs-input', withUsers: tab === 'accounts', withInvoices: tab === 'tagihan' });
     return;
   }
   if (act === 'auth-mode') {
@@ -137,6 +163,28 @@ async function handleClick(event) {
     return;
   }
   if (act === 'new-transaction') { openTransaction(); return; }
+  if (act === 'new-invoice') { openInvoice(); return; }
+  if (act === 'edit-invoice') {
+    const row = state.invoices.find((item) => item.id === button.dataset.id);
+    if (row) openInvoice(row);
+    return;
+  }
+  if (act === 'record-invoice-payment') {
+    const row = state.invoices.find((item) => item.id === button.dataset.id);
+    if (row) { state.modal = { type: 'invoice-payment', row }; render(); }
+    return;
+  }
+  if (act === 'delete-invoice') {
+    const row = state.invoices.find((item) => item.id === button.dataset.id);
+    if (!row || !window.confirm(`Hapus invoice ${row.invoice_number} milik ${row.customer}?`)) return;
+    try {
+      await deleteInvoice(row.id);
+      state.invoices = state.invoices.filter((item) => item.id !== row.id);
+      render();
+      notify('Invoice dihapus.');
+    } catch (error) { notify(message(error), 'error'); }
+    return;
+  }
   if (act === 'edit') {
     const row = state.transactions.find((item) => item.id === button.dataset.id);
     if (row) openTransaction(row);
@@ -165,8 +213,9 @@ async function handleClick(event) {
     return;
   }
   if (act === 'export') { exportCsv(); return; }
+  if (act === 'export-invoices') { exportInvoicesCsv(); return; }
   if (act === 'retry') {
-    await loadData({ withLogs: state.tab === 'logs-input', withUsers: state.tab === 'accounts' });
+    await loadData({ withLogs: state.tab === 'logs-input', withUsers: state.tab === 'accounts', withInvoices: state.tab === 'tagihan' });
     return;
   }
   if (act === 'signout') {
@@ -217,6 +266,13 @@ async function handleChange(event) {
     return;
   }
   if (target.matches('[data-filter="category"]')) { state.category = target.value; render(); return; }
+  if (target.matches('[data-filter="invoiceStatus"]')) { state.invoiceStatus = target.value; render(); return; }
+  if (target.matches('[data-filter="incomeWeek"]')) {
+    if (target.value === 'month') state.incomePlanPeriod = 'month';
+    else { state.incomePlanPeriod = 'week'; state.incomeWeek = target.value; }
+    render();
+    return;
+  }
   if (target.matches('[data-filter="kind"]')) { state.kind = target.value; render(); }
 }
 
@@ -279,6 +335,21 @@ async function handleSubmit(event) {
     notify('Nominal transaksi harus lebih dari 0.', 'error');
     return;
   }
+  if (form.dataset.kind === 'invoice') {
+    const amount = parseAmountInput(values.amount);
+    const paidAmount = parseAmountInput(values.paid_amount);
+    if (amount < 1) { notify('Nilai invoice harus lebih dari 0.', 'error'); return; }
+    if (paidAmount > amount) { notify('Pembayaran tidak boleh melebihi nilai invoice.', 'error'); return; }
+    if (paidAmount > 0 && !values.paid_date) { notify('Tanggal pembayaran wajib diisi jika ada pembayaran.', 'error'); return; }
+  }
+  if (form.dataset.kind === 'invoice-payment') {
+    const invoice = state.invoices.find((row) => row.id === form.dataset.id);
+    const balance = Math.max(Number(invoice?.amount || 0) - Number(invoice?.paid_amount || 0), 0);
+    const payment = parseAmountInput(values.payment_amount);
+    if (!invoice) { notify('Invoice tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
+    if (payment < 1) { notify('Nominal pembayaran harus lebih dari 0.', 'error'); return; }
+    if (payment > balance) { notify(`Pembayaran melebihi sisa invoice Rp ${balance.toLocaleString('id-ID')}.`, 'error'); return; }
+  }
   state.busy = true;
   render();
   try {
@@ -287,6 +358,29 @@ async function handleSubmit(event) {
         opening_balance: parseAmountInput(values.opening_balance),
         opening_balance_date: values.opening_balance_date,
       });
+      state.inputLogs = [];
+    } else if (form.dataset.kind === 'invoice') {
+      const invoice = await saveInvoice({
+        invoice_date: values.invoice_date,
+        due_date: values.due_date || null,
+        paid_date: values.paid_date || null,
+        customer: values.customer.trim(),
+        invoice_number: values.invoice_number.trim(),
+        po_number: values.po_number.trim(),
+        amount: parseAmountInput(values.amount),
+        paid_amount: parseAmountInput(values.paid_amount),
+      }, form.dataset.id || null);
+      state.invoices = [invoice, ...state.invoices.filter((item) => item.id !== invoice.id)]
+        .sort((a, b) => (a.customer || '').localeCompare(b.customer || '', 'id-ID', { sensitivity: 'base' })
+          || (a.invoice_date || '').localeCompare(b.invoice_date || ''));
+      state.inputLogs = [];
+    } else if (form.dataset.kind === 'invoice-payment') {
+      const previous = state.invoices.find((item) => item.id === form.dataset.id);
+      const invoice = await saveInvoice({
+        paid_amount: Number(previous.paid_amount || 0) + parseAmountInput(values.payment_amount),
+        paid_date: values.paid_date,
+      }, previous.id);
+      state.invoices = state.invoices.map((item) => item.id === invoice.id ? invoice : item);
       state.inputLogs = [];
     } else {
       const row = await saveTransaction({
@@ -304,7 +398,9 @@ async function handleSubmit(event) {
     state.modal = null;
     state.busy = false;
     render();
-    notify(form.dataset.id ? 'Perubahan berhasil disimpan.' : 'Data berhasil disimpan.');
+    notify(form.dataset.kind === 'invoice-payment' ? 'Pembayaran invoice berhasil dicatat.'
+      : form.dataset.kind === 'invoice' ? (form.dataset.id ? 'Perubahan invoice berhasil disimpan.' : 'Invoice berhasil disimpan.')
+        : form.dataset.id ? 'Perubahan berhasil disimpan.' : 'Data berhasil disimpan.');
   } catch (error) {
     state.busy = false;
     render();

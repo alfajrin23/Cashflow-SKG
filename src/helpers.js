@@ -60,3 +60,11 @@ export function monthName(value) {
 }
 
 export const inMonth = (date, month) => String(date || '').slice(0, 7) === month;
+
+export function statusForInvoice(invoice) {
+  const balance = Math.max(Number(invoice.amount || 0) - Number(invoice.paid_amount || 0), 0);
+  if (balance <= 0) return ['paid', 'Lunas'];
+  if (Number(invoice.paid_amount || 0) > 0) return ['partial', 'Sebagian dibayar'];
+  if (invoice.due_date && invoice.due_date < today()) return ['late', 'Jatuh tempo'];
+  return ['open', 'Belum dibayar'];
+}

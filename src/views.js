@@ -1,4 +1,4 @@
-import { CASH_CATEGORIES, esc, formatAmountInput, formatDate, icon, inMonth, money, monthName, number } from './helpers.js';
+import { CASH_CATEGORIES, esc, formatAmountInput, formatDate, icon, inMonth, money, monthName, number, statusForInvoice } from './helpers.js';
 
 const button = (label, action, kind = 'primary', glyph = 'plus') =>
   `<button class="button ${kind}" type="button" data-act="${action}">${icon(glyph, 17)}<span>${esc(label)}</span></button>`;
@@ -129,6 +129,95 @@ function cashflow(state) {
     </section>`;
 }
 
+function calendarWeekRanges(month) {
+  const [year, monthNumber] = String(month || '').split('-').map(Number);
+  if (!year || monthNumber < 1 || monthNumber > 12) return [];
+  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const firstDayOffset = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();
+  const weeks = [];
+  let startDay = 1;
+  let endDay = 7 - firstDayOffset;
+  while (startDay <= daysInMonth) {
+    const lastDay = Math.min(endDay, daysInMonth);
+    weeks.push({
+      number: weeks.length + 1, startDay, endDay: lastDay,
+      startDate: `${month}-${String(startDay).padStart(2, '0')}`,
+      endDate: `${month}-${String(lastDay).padStart(2, '0')}`,
+      amount: 0, rows: [],
+    });
+    startDay = lastDay + 1;
+    endDay += 7;
+  }
+  return weeks;
+}
+
+function invoiceIncomePlan(state) {
+  const weeks = calendarWeekRanges(state.month);
+  const openInvoices = state.invoices.filter((row) => Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0) > 0);
+  const missingDue = openInvoices.filter((row) => !row.due_date);
+  const missingAmount = missingDue.reduce((sum, row) => sum + Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0), 0);
+  const groups = new Map();
+  openInvoices.filter((row) => row.due_date?.slice(0, 7) === state.month).forEach((row) => {
+    const date = row.due_date.slice(0, 10);
+    const customer = String(row.customer || 'Customer belum dicatat').trim() || 'Customer belum dicatat';
+    const key = `${date}::${customer.toLocaleLowerCase('id-ID')}`;
+    const group = groups.get(key) || { date, customer, count: 0, amount: 0, invoiceNumbers: [] };
+    group.count += 1;
+    group.amount += Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0);
+    if (row.invoice_number) group.invoiceNumbers.push(row.invoice_number);
+    groups.set(key, group);
+  });
+  [...groups.values()].sort((a, b) => a.date.localeCompare(b.date) || a.customer.localeCompare(b.customer, 'id-ID')).forEach((row) => {
+    const day = Number(row.date.slice(8, 10));
+    const index = weeks.findIndex((week) => day >= week.startDay && day <= week.endDay);
+    if (index < 0) return;
+    weeks[index].rows.push({ ...row, dateLabel: formatDate(row.date), invoiceNumbers: row.invoiceNumbers.sort((a, b) => a.localeCompare(b, 'id-ID')) });
+    weeks[index].amount += row.amount;
+  });
+  const total = weeks.reduce((sum, week) => sum + week.amount, 0);
+  const currentMonth = state.today.slice(0, 7);
+  const todayDay = Number(state.today.slice(8, 10));
+  const currentWeek = Math.max(weeks.findIndex((week) => todayDay >= week.startDay && todayDay <= week.endDay), 0);
+  const requestedWeek = Number(state.incomeWeek);
+  const weekIndex = Math.max(0, Math.min(weeks.length - 1,
+    state.incomeWeek !== '' && Number.isInteger(requestedWeek) ? requestedWeek : state.month === currentMonth ? currentWeek : 0));
+  const monthly = state.incomePlanPeriod === 'month';
+  const selectedWeeks = monthly ? weeks : weeks.slice(weekIndex, weekIndex + 1);
+  const selectedAmount = monthly ? total : weeks[weekIndex]?.amount || 0;
+  const rows = selectedWeeks.flatMap((week) => week.rows);
+  const title = monthly ? `Rincian bulan ${monthName(state.month)}` : `Rincian pekan ${weeks[weekIndex]?.number || 1}`;
+  const empty = monthly ? `Belum ada rencana uang masuk pada ${monthName(state.month)}.` : 'Belum ada rencana uang masuk pada pekan ini.';
+  const rowMarkup = rows.map((row) => `<div class="income-week-row"><div><strong>${esc(row.customer)}</strong><small>${esc(row.dateLabel)} · Sesuai tanggal jatuh tempo · No. invoice ${row.invoiceNumbers.map((item) => esc(item)).join(', ')} · ${number(row.count)} invoice</small></div><b>${money(row.amount)}</b></div>`).join('');
+  const weekOptions = weeks.map((week, index) => `<option value="${index}" ${!monthly && index === weekIndex ? 'selected' : ''}>Pekan ${week.number} · ${formatDate(week.startDate, { day: 'numeric', month: 'short' })}–${formatDate(week.endDate)}</option>`).join('');
+  return `<section class="panel income-plan-panel"><div class="panel-heading"><div><p class="eyebrow">PERENCANAAN KAS</p><h2>Rencana uang masuk · ${esc(monthName(state.month))}</h2><p>Estimasi pembayaran invoice outstanding berdasarkan tanggal jatuh tempo.</p></div><div class="income-plan-filters"><label class="income-week-control"><span>Tampilkan</span><select aria-label="Pilih periode rencana uang masuk" data-filter="incomeWeek"><option value="month" ${monthly ? 'selected' : ''}>Seluruh bulan · ${esc(monthName(state.month))}</option>${weekOptions}</select></label><label class="month-control"><span>Periode</span><input aria-label="Pilih periode tagihan" data-filter="month" type="month" value="${esc(state.month)}"></label></div></div><div class="metric-grid income-plan-cards">${card('Rencana uang masuk', money(selectedAmount), 'wallet', 'green', monthly ? `Seluruh bulan · ${esc(monthName(state.month))}` : `Pekan ${weeks[weekIndex]?.number || 1} · ${formatDate(weeks[weekIndex]?.startDate, { day: 'numeric', month: 'short' })}–${formatDate(weeks[weekIndex]?.endDate)}`)}</div><section class="income-week-detail"><div class="income-week-detail-heading"><div><h3>${title}</h3><span>${formatDate(selectedWeeks[0]?.startDate, { day: 'numeric', month: 'short' })}–${formatDate(selectedWeeks[selectedWeeks.length - 1]?.endDate)}</span></div><strong>${money(selectedAmount)}</strong></div>${rowMarkup ? `<div class="income-week-rows">${rowMarkup}</div>` : `<p class="income-week-empty">${empty}</p>`}</section>${missingDue.length ? `<div class="notice notice-info">${icon('alert', 17)}<span>${number(missingDue.length)} invoice outstanding senilai ${money(missingAmount)} belum masuk rencana karena tanggal jatuh temponya belum diisi.</span></div>` : ''}</section>`;
+}
+
+function invoices(state) {
+  const search = state.search.trim().toLocaleLowerCase('id-ID');
+  const rows = state.invoices.filter((row) => {
+    const [status] = statusForInvoice(row);
+    return (!state.invoiceStatus || status === state.invoiceStatus)
+      && (!search || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(search));
+  }).sort((a, b) => (a.customer || '').localeCompare(b.customer || '', 'id-ID', { sensitivity: 'base' })
+    || (a.invoice_date || '').localeCompare(b.invoice_date || '')
+    || (a.invoice_number || '').localeCompare(b.invoice_number || '', 'id-ID'));
+  const outstanding = (row) => Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0);
+  const totalOutstanding = rows.reduce((sum, row) => sum + outstanding(row), 0);
+  const table = rows.map((row, index) => {
+    const [status, label] = statusForInvoice(row);
+    const customerHeading = index === 0 || rows[index - 1].customer !== row.customer
+      ? `<tr class="invoice-customer-heading"><td colspan="9">${esc(row.customer || 'Customer belum dicatat')}</td></tr>`
+      : '';
+    return `${customerHeading}<tr class="invoice-${status}"><td>${formatDate(row.invoice_date)}</td><td>${formatDate(row.due_date)}</td><td>${formatDate(row.paid_date)}</td><td class="description-cell">${esc(row.invoice_number)}</td><td>${esc(row.po_number || '—')}</td><td class="numeric">${money(row.amount)}</td><td class="numeric">${money(outstanding(row))}</td><td><span class="invoice-status status-${status}">${esc(label)}</span></td><td class="row-actions"><button class="icon-button" type="button" data-act="edit-invoice" data-id="${row.id}" aria-label="Edit invoice">${icon('edit', 16)}</button>${outstanding(row) > 0 ? `<button class="icon-button invoice-payment-button" type="button" data-act="record-invoice-payment" data-id="${row.id}" aria-label="Catat pembayaran" title="Catat pembayaran">${icon('check', 16)}</button>` : ''}<button class="icon-button danger-icon" type="button" data-act="delete-invoice" data-id="${row.id}" aria-label="Hapus invoice">${icon('trash', 16)}</button></td></tr>`;
+  }).join('');
+  return `<section class="page-heading"><div><p class="eyebrow">KEUANGAN · PIUTANG CUSTOMER</p><h1>Tagihan customer</h1><p>Pantau jatuh tempo, pembayaran, dan sisa invoice customer.</p></div><div class="heading-actions">${button('Invoice baru', 'new-invoice')}</div></section>
+    ${invoiceIncomePlan(state)}
+    <div class="summary-grid"><div class="summary-item"><span>Nilai invoice</span><strong>${money(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</strong></div><div class="summary-item"><span>Outstanding</span><strong>${money(totalOutstanding)}</strong></div><div class="summary-item"><span>Terlambat</span><strong>${number(rows.filter((row) => statusForInvoice(row)[0] === 'late').length)} invoice</strong></div><div class="summary-item"><span>Invoice</span><strong>${number(rows.length)}</strong></div></div>
+    <section class="panel"><div class="toolbar"><label class="search-field">${icon('search', 17)}<input aria-label="Cari invoice" data-filter="search" value="${esc(state.search)}" placeholder="Cari customer, PO, atau invoice"></label><select class="select-compact" aria-label="Filter status invoice" data-filter="invoiceStatus"><option value="">Semua status</option><option value="open" ${state.invoiceStatus === 'open' ? 'selected' : ''}>Belum dibayar</option><option value="late" ${state.invoiceStatus === 'late' ? 'selected' : ''}>Jatuh tempo</option><option value="partial" ${state.invoiceStatus === 'partial' ? 'selected' : ''}>Sebagian dibayar</option><option value="paid" ${state.invoiceStatus === 'paid' ? 'selected' : ''}>Lunas</option></select><button class="button secondary" type="button" data-act="export-invoices">${icon('download', 16)}<span>Export CSV</span></button></div>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Tanggal invoice</th><th>Jatuh tempo</th><th>Tanggal pembayaran</th><th>No. invoice</th><th>No. PO</th><th>Nilai</th><th>Sisa</th><th>Status</th><th class="actions-heading">Aksi</th></tr></thead><tbody>${table}</tbody></table></div>` : `<div class="empty-state"><div class="empty-icon">${icon('file', 26)}</div><h3>${state.invoices.length ? 'Tidak ada invoice yang cocok' : 'Belum ada invoice'}</h3><p>${state.invoices.length ? 'Ubah kata pencarian atau filter status.' : 'Tambahkan tagihan customer pertama untuk mulai memantau piutang.'}</p>${state.invoices.length ? '' : button('Tambah invoice', 'new-invoice')}</div>`}
+    </section>`;
+}
+
 function logSummary(changes = {}) {
   const details = Object.entries(changes).map(([field, value]) => {
     const display = (item) => item === null || item === undefined ? '—'
@@ -152,7 +241,7 @@ function logs(state) {
   const rows = state.inputLogs;
   return `${periodHead(state.month, 'Log input', 'Riwayat perubahan data kas untuk pengawasan internal.')}
     <section class="panel">${panelTitle('AUDIT TRAIL', 'Aktivitas tercatat', 'Maksimal 500 aktivitas untuk periode yang dipilih.')}
-    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Perubahan</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${logTime(row.created_at)}</td><td>${esc(row.actor_email || '—')}</td><td><span class="flow-pill ${row.action === 'delete' ? 'expense' : 'income'}">${row.action === 'insert' ? 'Tambah' : row.action === 'update' ? 'Ubah' : 'Hapus'}</span></td><td class="log-change"><strong>${esc(row.table_name === 'cashflow_settings' ? 'Saldo awal' : row.table_name === 'profiles' ? 'Akses akun' : 'Transaksi kas')}</strong><small>${logSummary(row.changes)}</small></td></tr>`).join('')}</tbody></table></div>` : '<div class="quiet-empty">Belum ada aktivitas tercatat untuk periode ini.</div>'}
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Perubahan</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${logTime(row.created_at)}</td><td>${esc(row.actor_email || '—')}</td><td><span class="flow-pill ${row.action === 'delete' ? 'expense' : 'income'}">${row.action === 'insert' ? 'Tambah' : row.action === 'update' ? 'Ubah' : 'Hapus'}</span></td><td class="log-change"><strong>${esc(row.table_name === 'cashflow_settings' ? 'Saldo awal' : row.table_name === 'profiles' ? 'Akses akun' : row.table_name === 'cashflow_invoices' ? 'Tagihan customer' : 'Transaksi kas')}</strong><small>${logSummary(row.changes)}</small></td></tr>`).join('')}</tbody></table></div>` : '<div class="quiet-empty">Belum ada aktivitas tercatat untuk periode ini.</div>'}
     </section>`;
 }
 
@@ -177,11 +266,20 @@ function modal(state) {
   if (!state.modal) return '';
   const { type, row = {} } = state.modal;
   const opening = type === 'opening';
+  const invoice = type === 'invoice';
+  const invoicePayment = type === 'invoice-payment';
   const categoryOptions = CASH_CATEGORIES.map((category) => `<option value="${esc(category)}" ${row.category === category ? 'selected' : ''}>${esc(category)}</option>`).join('');
   const body = opening
     ? `<div class="form-grid"><label class="field"><span>Nominal saldo awal</span><input name="opening_balance" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.opening_balance ?? 0))}"></label><label class="field"><span>Saldo per tanggal</span><input name="opening_balance_date" type="date" required value="${esc(row.opening_balance_date || state.today)}"></label></div><p class="form-hint">Saldo awal menjadi dasar perhitungan saldo berjalan.</p>`
-    : `<div class="form-grid"><label class="field"><span>Tanggal transaksi</span><input name="transaction_date" type="date" required value="${esc(row.transaction_date || state.today)}"></label><label class="field"><span>Jenis arus</span><select name="kind"><option value="debit" ${row.kind !== 'credit' ? 'selected' : ''}>Uang keluar</option><option value="credit" ${row.kind === 'credit' ? 'selected' : ''}>Uang masuk</option></select></label><label class="field"><span>Kategori</span><select name="category" required>${categoryOptions}</select></label><label class="field"><span>Nama pengajuan / sumber</span><input name="requester" value="${esc(row.requester || '')}" placeholder="Nama pemohon atau sumber dana"></label><label class="field field-wide"><span>Nominal</span><input name="amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.amount ?? ''))}"></label><label class="field field-wide"><span>Keterangan</span><textarea name="description" rows="3" placeholder="Tujuan transaksi atau detail sumber dana">${esc(row.description || '')}</textarea></label></div>`;
-  return `<div class="modal-backdrop" data-act="backdrop"><section class="modal-card" role="dialog" aria-modal="true"><header class="modal-heading"><div><p class="eyebrow">PT SWATAMA KARYA GEMILANG</p><h2>${opening ? 'Atur saldo awal' : row.id ? 'Edit transaksi kas' : 'Transaksi baru'}</h2></div><button class="icon-button" type="button" data-act="close-modal" aria-label="Tutup">${icon('close', 18)}</button></header><form class="form-stack modal-form" data-form="modal" data-kind="${opening ? 'opening' : 'transaction'}" data-id="${esc(row.id || '')}">${body}<div class="modal-actions"><button class="button secondary" type="button" data-act="close-modal">${icon('close', 16)}<span>Batal</span></button><button class="button primary" type="submit" ${state.busy ? 'disabled' : ''}>${icon('save', 16)}<span>Simpan</span></button></div></form></section></div>`;
+    : invoice
+      ? `<div class="form-grid"><label class="field"><span>Tanggal invoice</span><input name="invoice_date" type="date" required value="${esc(row.invoice_date || state.today)}"></label><label class="field"><span>Jatuh tempo</span><input name="due_date" type="date" value="${esc(row.due_date || '')}"></label><label class="field"><span>Nama customer</span><input name="customer" required value="${esc(row.customer || '')}" list="invoice-customer-suggestions" autocomplete="off"><datalist id="invoice-customer-suggestions">${[...new Set(state.invoices.map((item) => item.customer).filter(Boolean))].map((customer) => `<option value="${esc(customer)}"></option>`).join('')}</datalist></label><label class="field"><span>Nomor invoice</span><input name="invoice_number" required value="${esc(row.invoice_number || '')}"></label><label class="field"><span>Nomor PO</span><input name="po_number" value="${esc(row.po_number || '')}"></label><label class="field"><span>Nilai invoice</span><input name="amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.amount ?? ''))}"></label><label class="field"><span>Sudah dibayar</span><input name="paid_amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input value="${esc(formatAmountInput(row.paid_amount || 0))}"></label><label class="field"><span>Tanggal pembayaran terakhir</span><input name="paid_date" type="date" value="${esc(row.paid_date || '')}"></label></div><p class="form-hint">Status invoice mengikuti sisa tagihan dan tanggal jatuh tempo.</p>`
+      : invoicePayment
+        ? `<div class="notice"><span>${esc(row.customer)} · Invoice ${esc(row.invoice_number)} · Sisa tagihan ${money(Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0))}</span></div><div class="form-grid"><label class="field"><span>Nominal pembayaran</span><input name="payment_amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0)))}"></label><label class="field"><span>Tanggal pembayaran</span><input name="paid_date" type="date" required value="${esc(state.today)}"></label></div>`
+        : `<div class="form-grid"><label class="field"><span>Tanggal transaksi</span><input name="transaction_date" type="date" required value="${esc(row.transaction_date || state.today)}"></label><label class="field"><span>Jenis arus</span><select name="kind"><option value="debit" ${row.kind !== 'credit' ? 'selected' : ''}>Uang keluar</option><option value="credit" ${row.kind === 'credit' ? 'selected' : ''}>Uang masuk</option></select></label><label class="field"><span>Kategori</span><select name="category" required>${categoryOptions}</select></label><label class="field"><span>Nama pengajuan / sumber</span><input name="requester" value="${esc(row.requester || '')}" placeholder="Nama pemohon atau sumber dana"></label><label class="field field-wide"><span>Nominal</span><input name="amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.amount ?? ''))}"></label><label class="field field-wide"><span>Keterangan</span><textarea name="description" rows="3" placeholder="Tujuan transaksi atau detail sumber dana">${esc(row.description || '')}</textarea></label></div>`;
+  const title = opening ? 'Atur saldo awal' : invoice ? (row.id ? 'Edit invoice customer' : 'Invoice baru') : invoicePayment ? 'Catat pembayaran invoice' : row.id ? 'Edit transaksi kas' : 'Transaksi baru';
+  const kind = opening ? 'opening' : invoice ? 'invoice' : invoicePayment ? 'invoice-payment' : 'transaction';
+  const submit = invoicePayment ? 'Catat pembayaran' : invoice ? (row.id ? 'Simpan perubahan' : 'Simpan invoice') : 'Simpan';
+  return `<div class="modal-backdrop" data-act="backdrop"><section class="modal-card" role="dialog" aria-modal="true"><header class="modal-heading"><div><p class="eyebrow">PT SWATAMA KARYA GEMILANG</p><h2>${title}</h2></div><button class="icon-button" type="button" data-act="close-modal" aria-label="Tutup">${icon('close', 18)}</button></header><form class="form-stack modal-form" data-form="modal" data-kind="${kind}" data-id="${esc(row.id || '')}">${body}<div class="modal-actions"><button class="button secondary" type="button" data-act="close-modal">${icon('close', 16)}<span>Batal</span></button><button class="button primary" type="submit" ${state.busy ? 'disabled' : ''}>${icon('save', 16)}<span>${submit}</span></button></div></form></section></div>`;
 }
 
 export function renderApp(state) {
@@ -191,8 +289,8 @@ export function renderApp(state) {
   if (state.profileError) return `<main class="auth-screen"><section class="auth-card"><h1>Akses akun belum siap</h1><div class="notice notice-warn"><span>${esc(state.profileError)}</span></div><button class="button secondary button-wide" type="button" data-act="signout">Keluar</button></section></main>`;
   if (!state.profile?.workspace_id) return `<main class="auth-screen"><section class="auth-card"><img src="/brand-mark.png" alt="" class="auth-logo"><p class="eyebrow">AKUN STAFF</p><h1>Akses menunggu developer</h1><p class="auth-copy">Akun ${esc(state.session.user.email)} sudah terdaftar. Developer perlu menghubungkan akun ke workspace Cashflow SKG melalui Supabase SQL Editor.</p><button class="button secondary button-wide" type="button" data-act="signout">Keluar</button></section></main>`;
   const isDeveloper = state.profile.role === 'developer';
-  const tabs = [['dashboard', 'Ringkasan', 'home'], ['cashflow', 'Cashflow', 'wallet'], ...(isDeveloper ? [['accounts', 'Akun & akses', 'users'], ['logs-input', 'Log Input', 'file']] : [])];
+  const tabs = [['dashboard', 'Ringkasan', 'home'], ['cashflow', 'Cashflow', 'wallet'], ['tagihan', 'Tagihan', 'file'], ...(isDeveloper ? [['accounts', 'Akun & akses', 'users'], ['logs-input', 'Log Input', 'file']] : [])];
   const tab = tabs.find(([key]) => key === state.tab) ? state.tab : 'dashboard';
-  const content = tab === 'dashboard' ? dashboard(state) : tab === 'cashflow' ? cashflow(state) : tab === 'accounts' ? accountAccess(state) : logs(state);
+  const content = tab === 'dashboard' ? dashboard(state) : tab === 'cashflow' ? cashflow(state) : tab === 'tagihan' ? invoices(state) : tab === 'accounts' ? accountAccess(state) : logs(state);
   return `<div class="app-shell"><header class="topbar"><a class="brand" href="#" data-act="navigate" data-tab="dashboard"><img src="/brand-mark.png" alt="Logo PT Swatama Karya Gemilang"><span><strong>Cashflow SKG</strong><small>PT Swatama Karya Gemilang</small></span></a><a class="copyright-link" href="https://github.com/alfajrin23" target="_blank" rel="noopener noreferrer">Copyright 2026 by Al Fajrin A Alamsyah</a><nav class="main-nav" aria-label="Navigasi utama">${tabs.map(([key, label, glyph]) => `<button class="nav-tab ${tab === key ? 'active' : ''}" type="button" data-act="navigate" data-tab="${key}">${icon(glyph, 17)}<span>${label}</span></button>`).join('')}</nav><div class="account-menu"><span class="role-badge ${isDeveloper ? 'developer' : ''}">${isDeveloper ? 'Developer' : 'Staff'}</span><span class="account-email" title="${esc(state.session.user.email)}">${esc(state.session.user.email)}</span><button class="icon-button" type="button" data-act="signout" aria-label="Keluar">${icon('logout', 17)}</button></div></header><main class="workspace">${state.error ? `<div class="notice notice-warn load-notice">${icon('alert', 17)}<span>${esc(state.error)}</span><button type="button" data-act="retry">Coba lagi</button></div>` : ''}${state.loading ? '<div class="loading-line"><i></i> Memuat data kas…</div>' : ''}${content}</main>${modal(state)}<div class="toast-stack" aria-live="polite">${state.toast ? `<div class="toast ${state.toast.type}" role="status">${icon(state.toast.type === 'error' ? 'alert' : 'check', 17)}<span>${esc(state.toast.message)}</span></div>` : ''}</div></div>`;
 }
