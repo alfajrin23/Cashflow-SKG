@@ -139,7 +139,7 @@ function exportInvoicesCsv() {
   const csv = '\ufeff' + lines.map((line) => line.map(quote).join(',')).join('\r\n');
   const link = document.createElement('a');
   link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  link.download = `tagihan-customer-${today()}.csv`;
+  link.download = `invoice-customer-${today()}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
