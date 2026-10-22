@@ -212,6 +212,11 @@ async function handleClick(event) {
     return;
   }
   if (act === 'new-contract') { state.modal = { type: 'contract', row: {} }; render(); return; }
+  if (act === 'edit-contract') {
+    const contract = state.contracts.find((item) => item.id === button.dataset.id);
+    if (contract) { state.modal = { type: 'contract', row: contract }; render(); }
+    return;
+  }
   if (act === 'record-contract-payment') {
     const contract = state.contracts.find((item) => item.id === button.dataset.contractId);
     if (contract && contractRemaining(contract) > 0) {
@@ -440,9 +445,15 @@ async function handleSubmit(event) {
   if (form.dataset.kind === 'contract') {
     const customer = values.customer.trim();
     const amount = parseAmountInput(values.contract_amount);
+    const existing = state.contracts.find((contract) => contract.id === form.dataset.id);
     if (!customer) { notify('Nama customer wajib diisi.', 'error'); return; }
     if (amount < 1) { notify('Nilai kontrak harus lebih dari 0.', 'error'); return; }
-    if (state.contracts.some((contract) => normalizedCustomer(contract.customer) === normalizedCustomer(customer))) {
+    if (form.dataset.id && !existing) { notify('Kontrak tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error'); return; }
+    if (existing && amount < contractPaidAmount(existing)) {
+      notify(`Nilai kontrak tidak boleh kurang dari jumlah terbayar Rp ${contractPaidAmount(existing).toLocaleString('id-ID')}.`, 'error');
+      return;
+    }
+    if (!existing && state.contracts.some((contract) => normalizedCustomer(contract.customer) === normalizedCustomer(customer))) {
       notify('Kontrak untuk customer ini sudah ada.', 'error');
       return;
     }
@@ -490,11 +501,12 @@ async function handleSubmit(event) {
       });
       state.inputLogs = [];
     } else if (form.dataset.kind === 'contract') {
-      const contract = await saveCustomerContract({
-        customer: values.customer.trim(),
-        contract_amount: parseAmountInput(values.contract_amount),
-      });
-      state.contracts = [...state.contracts, contract]
+      const contract = await saveCustomerContract(form.dataset.id
+        ? { contract_amount: parseAmountInput(values.contract_amount) }
+        : { customer: values.customer.trim(), contract_amount: parseAmountInput(values.contract_amount) }, form.dataset.id || null);
+      state.contracts = (form.dataset.id
+        ? state.contracts.map((item) => item.id === contract.id ? contract : item)
+        : [...state.contracts, contract])
         .sort((a, b) => a.customer.localeCompare(b.customer, 'id-ID', { sensitivity: 'base' }));
       state.inputLogs = [];
     } else if (form.dataset.kind === 'contract-payment') {
@@ -555,7 +567,7 @@ async function handleSubmit(event) {
     state.modal = null;
     state.busy = false;
     render();
-    notify(form.dataset.kind === 'contract' ? 'Kontrak berhasil disimpan.'
+    notify(form.dataset.kind === 'contract' ? (form.dataset.id ? 'Nilai kontrak berhasil diperbarui.' : 'Kontrak berhasil disimpan.')
       : form.dataset.kind === 'contract-payment' ? 'Pembayaran kontrak berhasil dicatat.'
         : ['invoice-payment', 'customer-payment'].includes(form.dataset.kind) ? 'Pembayaran invoice berhasil dicatat.'
       : form.dataset.kind === 'invoice' ? (form.dataset.id ? 'Perubahan invoice berhasil disimpan.' : 'Invoice berhasil disimpan.')

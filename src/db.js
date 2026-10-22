@@ -92,9 +92,11 @@ export async function loadCustomerContracts() {
   }
 }
 
-export async function saveCustomerContract(values) {
-  const { data, error } = await supabase.from('cashflow_customer_contracts')
-    .insert({ ...values, workspace_id: workspaceId })
+export async function saveCustomerContract(values, id) {
+  const query = id
+    ? supabase.from('cashflow_customer_contracts').update(values).eq('id', id)
+    : supabase.from('cashflow_customer_contracts').insert({ ...values, workspace_id: workspaceId });
+  const { data, error } = await query
     .select('id, customer, contract_amount, created_at')
     .single();
   if (error) throw error;
