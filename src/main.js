@@ -170,7 +170,8 @@ function exportInvoicesCsv() {
       || (state.invoiceStatus === 'partial' && contract && contractPaidAmount(contract) > 0 && remaining > 0)
       || (state.invoiceStatus === 'paid' && contract && remaining === 0)
       || (state.invoiceStatus === 'late' && statusForInvoice(row)[0] === 'late');
-    return (!state.invoicePeriod || row.invoice_date?.slice(0, 7) === state.invoicePeriod)
+    return (!state.invoicePeriod || (Number(row.paid_amount || 0) > 0
+      && (row.paid_date || row.invoice_date)?.slice(0, 7) === state.invoicePeriod))
       && matchesStatus
       && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term));
   });
