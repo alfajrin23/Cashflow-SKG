@@ -12,7 +12,7 @@ const state = {
   configured: isConfigured, session: null, profile: null, profileLoading: false,
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
   month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [], contracts: [],
-  settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '',
+  settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '', invoicePaymentStatus: '',
   expandedInvoiceCustomer: null, invoicePeriod: '',
   incomeWeek: '', incomePlanPeriod: 'week',
   loading: false, busy: false, error: '', modal: null, toast: null,
@@ -165,14 +165,17 @@ function exportInvoicesCsv() {
   const rows = state.invoices.filter((row) => {
     const contract = contractForInvoice(row);
     const remaining = contract ? contractRemaining(contract) : 0;
+    const invoiceBalance = Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0);
     const matchesStatus = !state.invoiceStatus
       || (state.invoiceStatus === 'open' && contract && remaining > 0)
       || (state.invoiceStatus === 'partial' && contract && contractPaidAmount(contract) > 0 && remaining > 0)
       || (state.invoiceStatus === 'paid' && contract && remaining === 0)
       || (state.invoiceStatus === 'late' && statusForInvoice(row)[0] === 'late');
-    return (!state.invoicePeriod || (Number(row.paid_amount || 0) > 0
-      && (row.paid_date || row.invoice_date)?.slice(0, 7) === state.invoicePeriod))
-      && matchesStatus
+    const matchesInvoicePaymentStatus = !state.invoicePaymentStatus
+      || (state.invoicePaymentStatus === 'paid' && invoiceBalance === 0)
+      || (state.invoicePaymentStatus === 'unpaid' && invoiceBalance > 0);
+    return matchesStatus
+      && matchesInvoicePaymentStatus
       && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term));
   });
   const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
@@ -196,6 +199,7 @@ async function handleClick(event) {
     state.tab = tab;
     state.search = '';
     state.invoiceStatus = '';
+    state.invoicePaymentStatus = '';
     if (tab === 'tagihan') state.expandedInvoiceCustomer = null;
     await loadData({ withLogs: tab === 'logs-input', withUsers: tab === 'accounts', withInvoices: tab === 'tagihan' });
     return;
@@ -370,6 +374,7 @@ async function handleChange(event) {
   }
   if (target.matches('[data-filter="category"]')) { state.category = target.value; render(); return; }
   if (target.matches('[data-filter="invoiceStatus"]')) { state.invoiceStatus = target.value; render(); return; }
+  if (target.matches('[data-filter="invoicePaymentStatus"]')) { state.invoicePaymentStatus = target.value; render(); return; }
   if (target.matches('[data-filter="incomeWeek"]')) {
     if (target.value === 'month') state.incomePlanPeriod = 'month';
     else { state.incomePlanPeriod = 'week'; state.incomeWeek = target.value; }
