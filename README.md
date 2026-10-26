@@ -50,8 +50,10 @@ Jika database sudah dibuat sebelum pengelolaan akun tersedia, jalankan `supabase
 
 Menu **Invoice** menyimpan invoice customer pada workspace Cashflow SKG. Jika database sudah berjalan, jalankan `supabase/migrations/20261023_customer_invoices.sql` di SQL Editor sebelum membuka menu tersebut. Instalasi baru sudah mendapat tabel ini dari `supabase/schema.sql`.
 
+Kategori Cashflow mendukung kategori bawaan dan kategori yang diketik pengguna. Jika database sudah berjalan, jalankan `supabase/migrations/20261026_cashflow_custom_categories.sql` di SQL Editor agar kategori bebas dapat disimpan. Instalasi baru perlu menjalankan migrasi ini setelah `supabase/schema.sql`.
+
 ## Kategori kas
 
-Material; Upah / Kasbon Tukang; Upah Staff Pelaksana; Upah Tim Spesialis; Alat; Operasional; Subcont; Listrik; Lain-Lain; Fee; Kk; Pajak; Atk; Aset; Cost Subcont; Cost Listrik; Cost Lain Lain.
+Material; Upah / Kasbon Tukang; Upah Staff Pelaksana; Upah Tim Spesialis; Alat; Operasional; Giro; Subcont; Listrik; Lain-Lain; Fee; Kk; Pajak; Atk; Aset; Cost Subcont; Cost Listrik; Cost Lain Lain. Pengguna juga dapat mengetik kategori baru saat mencatat transaksi.
 
 Arus **uang masuk/keluar** dipilih terpisah dari kategori agar daftar kategori mengikuti referensi.
