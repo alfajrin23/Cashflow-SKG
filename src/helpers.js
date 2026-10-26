@@ -1,6 +1,6 @@
 export const CASH_CATEGORIES = [
   'Material', 'Upah / Kasbon Tukang', 'Upah Staff Pelaksana', 'Upah Tim Spesialis',
-  'Alat', 'Operasional', 'Subcont', 'Listrik', 'Lain-Lain', 'Fee', 'Kk', 'Pajak',
+  'Alat', 'Operasional', 'Giro', 'Subcont', 'Listrik', 'Lain-Lain', 'Fee', 'Kk', 'Pajak',
   'Atk', 'Aset', 'Cost Subcont', 'Cost Listrik', 'Cost Lain Lain',
 ];
 

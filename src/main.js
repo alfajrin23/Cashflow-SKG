@@ -452,6 +452,10 @@ async function handleSubmit(event) {
     notify('Nominal transaksi harus lebih dari 0.', 'error');
     return;
   }
+  if (form.dataset.kind === 'transaction' && !String(values.category || '').trim()) {
+    notify('Kategori transaksi wajib diisi.', 'error');
+    return;
+  }
   if (form.dataset.kind === 'invoice') {
     const amount = parseAmountInput(values.amount);
     const paidAmount = parseAmountInput(values.paid_amount);
@@ -597,7 +601,7 @@ async function handleSubmit(event) {
       const row = await saveTransaction({
         transaction_date: values.transaction_date,
         kind: values.kind,
-        category: values.category,
+        category: values.category.trim(),
         requester: values.requester.trim(),
         description: values.description.trim(),
         amount: parseAmountInput(values.amount),
