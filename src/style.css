@@ -228,7 +228,11 @@ tbody tr:hover { background: #fbfaf6; }
 .invoice-payment-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
 .invoice-payment-history-heading h2 { margin: 0; color: var(--navy); font: 800 .72rem/1.25 Manrope, sans-serif; }
 .invoice-payment-history-heading p { margin: 3px 0 0; color: #879197; font-size: .58rem; }
-.invoice-payment-history-heading > strong { color: var(--navy); font: 700 .75rem/1.2 'DM Mono', monospace; }
+.invoice-payment-history-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; }
+.invoice-payment-history-actions > strong { color: var(--navy); font: 700 .75rem/1.2 'DM Mono', monospace; }
+.invoice-recap-toggle { flex-shrink: 0; font-size: .62rem; }
+.invoice-recap-toggle svg { transform: rotate(90deg); transition: transform .15s ease; }
+.invoice-recap-toggle[aria-expanded="true"] svg { transform: rotate(-90deg); }
 .invoice-payment-history .table-wrap { border-top: 1px solid #eeeae1; border-radius: 0; }
 .invoice-payment-history table { font-size: .63rem; }
 .invoice-payment-history th { padding: 8px 9px; font-size: .54rem; }

@@ -13,7 +13,7 @@ const state = {
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
   month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [], contracts: [],
   settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '', invoicePaymentStatus: '',
-  expandedInvoiceCustomer: null, invoicePeriod: '',
+  expandedInvoiceCustomer: null, invoicePeriod: '', invoiceRecapExpanded: false,
   incomeWeek: '', incomePlanPeriod: 'week',
   loading: false, busy: false, error: '', modal: null, toast: null,
 };
@@ -200,7 +200,10 @@ async function handleClick(event) {
     state.search = '';
     state.invoiceStatus = '';
     state.invoicePaymentStatus = '';
-    if (tab === 'tagihan') state.expandedInvoiceCustomer = null;
+    if (tab === 'tagihan') {
+      state.expandedInvoiceCustomer = null;
+      state.invoiceRecapExpanded = Boolean(state.invoicePeriod);
+    }
     await loadData({ withLogs: tab === 'logs-input', withUsers: tab === 'accounts', withInvoices: tab === 'tagihan' });
     return;
   }
@@ -240,6 +243,11 @@ async function handleClick(event) {
     const isOpen = state.expandedInvoiceCustomer === key
       || (state.expandedInvoiceCustomer === null && button.dataset.defaultOpen === 'true');
     state.expandedInvoiceCustomer = isOpen ? '' : key;
+    render();
+    return;
+  }
+  if (act === 'toggle-invoice-recap') {
+    state.invoiceRecapExpanded = !state.invoiceRecapExpanded;
     render();
     return;
   }
@@ -340,6 +348,7 @@ function handleInput(event) {
   }
   if (target.matches('[data-filter="search"]')) {
     state.search = target.value;
+    if (state.tab === 'tagihan') state.invoiceRecapExpanded = true;
     const start = target.selectionStart;
     render();
     const input = app.querySelector('[data-filter="search"]');
@@ -369,12 +378,13 @@ async function handleChange(event) {
   if (target.matches('[data-filter="invoicePeriod"]')) {
     state.invoicePeriod = target.value;
     state.expandedInvoiceCustomer = null;
+    state.invoiceRecapExpanded = true;
     render();
     return;
   }
   if (target.matches('[data-filter="category"]')) { state.category = target.value; render(); return; }
-  if (target.matches('[data-filter="invoiceStatus"]')) { state.invoiceStatus = target.value; render(); return; }
-  if (target.matches('[data-filter="invoicePaymentStatus"]')) { state.invoicePaymentStatus = target.value; render(); return; }
+  if (target.matches('[data-filter="invoiceStatus"]')) { state.invoiceStatus = target.value; state.invoiceRecapExpanded = true; render(); return; }
+  if (target.matches('[data-filter="invoicePaymentStatus"]')) { state.invoicePaymentStatus = target.value; state.invoiceRecapExpanded = true; render(); return; }
   if (target.matches('[data-filter="incomeWeek"]')) {
     if (target.value === 'month') state.incomePlanPeriod = 'month';
     else { state.incomePlanPeriod = 'week'; state.incomeWeek = target.value; }
