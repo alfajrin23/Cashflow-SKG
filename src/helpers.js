@@ -13,6 +13,7 @@ const paths = {
   chart: '<path d="M3 3v18h18M18 17V9m-5 8V5m-5 12v-5"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/>',
+  filter: '<path d="M4 6h16M7 12h10m-7 6h4"/>',
   edit: '<path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
   trash: '<path d="M3 6h18m-2 0-1 14H6L5 6m4 0V4h6v2m-5 4v6m4-6v6"/>',
   close: '<path d="m18 6-12 12M6 6l12 12"/>',

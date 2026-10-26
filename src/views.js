@@ -85,20 +85,25 @@ function trendChart(transactions, selectedMonth) {
   return `<div class="trend-chart"><div class="chart-y"><span>${money(ceiling)}</span><span>${money(ceiling / 2)}</span><span>Rp0</span></div><div class="chart-bars">${chartBars}</div></div><div class="chart-legend"><span><i class="legend-income"></i> Uang masuk</span><span><i class="legend-expense"></i> Uang keluar</span></div>`;
 }
 
-function categoryBreakdown(rows, { allKinds = false } = {}) {
+function categoryTotals(rows, { allKinds = false } = {}) {
   const totalsByCategory = rows.reduce((map, row) => {
     if (!allKinds && row.kind !== 'debit') return map;
     const category = String(row.category || '').trim();
     if (!category) return map;
     const key = JSON.stringify([category, allKinds ? row.kind : 'debit']);
-    const entry = map.get(key) || { category, kind: row.kind, amount: 0 };
+    const entry = map.get(key) || { category, kind: row.kind, amount: 0, count: 0 };
     entry.amount += Number(row.amount || 0);
+    entry.count += 1;
     map.set(key, entry);
     return map;
   }, new Map());
-  const ranked = [...totalsByCategory.values()].sort((a, b) => b.amount - a.amount
+  return [...totalsByCategory.values()].sort((a, b) => b.amount - a.amount
     || a.category.localeCompare(b.category, 'id-ID')
     || a.kind.localeCompare(b.kind));
+}
+
+function categoryBreakdown(rows, { allKinds = false } = {}) {
+  const ranked = categoryTotals(rows, { allKinds });
   const max = ranked[0]?.amount || 1;
   return ranked.length ? ranked.map(({ category, kind, amount }, index) => `<div class="category-row"><div class="category-row-meta"><span><i class="category-dot dot-${index % 6}"></i>${esc(category)}${allKinds ? `<small class="category-flow">${kind === 'credit' ? 'Masuk' : 'Keluar'}</small>` : ''}</span><strong>${money(amount)}</strong></div><div class="category-track"><i class="dot-bg-${index % 6}" style="width:${Math.max(3, amount / max * 100)}%"></i></div></div>`).join('')
     : `<div class="quiet-empty">${allKinds ? 'Belum ada transaksi untuk periode ini.' : 'Belum ada pengeluaran untuk periode ini.'}</div>`;
@@ -123,13 +128,26 @@ function cashflow(state) {
   const rows = filteredTransactions(state, state.category, state.kind);
   const monthRows = state.transactions.filter((row) => inMonth(row.transaction_date, state.month));
   const sums = totals(monthRows);
+  const categoryEntries = categoryTotals(monthRows, { allKinds: true });
   const currentBalance = balanceAt(state, '9999-12-31');
   const categories = [...new Set([...CASH_CATEGORIES, ...state.transactions.map((row) => row.category).filter(Boolean)])];
+  const categoryCards = categoryEntries.map(({ category, kind, amount }, index) => {
+    const active = state.category === category && state.kind === kind;
+    return `<button class="category-recap-card ${active ? 'is-active' : ''}" type="button" data-act="category-recap-filter" data-category="${esc(category)}" data-kind="${kind}" aria-pressed="${active}"><span class="category-recap-chip chip-${index % 6}">${esc(category)}</span><small>${kind === 'credit' ? 'Uang masuk' : 'Uang keluar'}</small><strong>${money(amount)}</strong></button>`;
+  }).join('');
+  const expenseActive = !state.category && state.kind === 'debit';
+  const incomeActive = !state.category && state.kind === 'credit';
   return `${periodHead(state.month, 'Buku kas', 'Catat dan telusuri setiap uang masuk dan keluar.', button('Tambah transaksi', 'new-transaction'))}
     <section class="opening-card"><div><p class="eyebrow">SALDO AWAL</p><h2>${money(state.settings?.opening_balance || 0)}</h2><p>Saldo per ${formatDate(state.settings?.opening_balance_date)}</p></div>${button('Atur saldo awal', 'edit-opening', 'secondary', 'edit')}</section>
     <div class="summary-grid"><div class="summary-item"><span>Saldo berjalan</span><strong>${money(currentBalance)}</strong></div><div class="summary-item"><span>Uang masuk bulan ini</span><strong class="credit">${money(sums.income)}</strong></div><div class="summary-item"><span>Uang keluar bulan ini</span><strong class="debit">${money(sums.expense)}</strong></div><div class="summary-item"><span>Arus bersih bulan ini</span><strong>${money(sums.net)}</strong></div></div>
-    <section class="panel"> ${panelTitle('KATEGORI', 'Rekap kategori bulan ini', monthName(state.month))}<div class="category-breakdown"> ${categoryBreakdown(monthRows, { allKinds: true })}</div></section>
-    <section class="panel"> ${panelTitle('BUKU KAS', 'Daftar transaksi', `${number(rows.length)} transaksi sesuai filter.`)}
+    <section class="panel category-recap-panel"><div class="category-recap-heading"><div><p class="eyebrow category-recap-eyebrow">KATEGORI</p><h2>Ringkasan berdasarkan kategori</h2><p>Uang masuk dan keluar per kategori · ${esc(monthName(state.month))}</p></div><button class="icon-button category-recap-filter ${state.category || state.kind ? 'is-active' : ''}" type="button" data-act="clear-category-recap" aria-label="Hapus filter kategori" title="Hapus filter kategori">${icon('filter', 17)}</button></div>
+      <div class="category-recap-grid">
+        <button class="category-recap-total expense ${expenseActive ? 'is-active' : ''}" type="button" data-act="category-recap-filter" data-category="" data-kind="debit" aria-pressed="${expenseActive}"><span>TOTAL UANG KELUAR</span><strong>${money(sums.expense)}</strong><small>${number(monthRows.filter((row) => row.kind === 'debit').length)} transaksi pada periode ini</small></button>
+        <button class="category-recap-total income ${incomeActive ? 'is-active' : ''}" type="button" data-act="category-recap-filter" data-category="" data-kind="credit" aria-pressed="${incomeActive}"><span>TOTAL UANG MASUK</span><strong>${money(sums.income)}</strong><small>${number(monthRows.filter((row) => row.kind === 'credit').length)} transaksi pada periode ini</small></button>
+        ${categoryCards || '<div class="category-recap-empty">Belum ada transaksi berkategori pada periode ini.</div>'}
+      </div>
+    </section>
+    <section class="panel" id="cashflow-transactions"> ${panelTitle('BUKU KAS', 'Daftar transaksi', `${number(rows.length)} transaksi sesuai filter.`)}
       <div class="toolbar"><label class="search-field">${icon('search', 17)}<input data-filter="search" value="${esc(state.search)}" placeholder="Cari pengaju atau keterangan"></label>
         <select class="select-compact" data-filter="category"><option value="">Semua kategori</option>${categories.map((item) => `<option value="${esc(item)}" ${item === state.category ? 'selected' : ''}>${esc(item)}</option>`).join('')}</select>
         <select class="select-compact" data-filter="kind"><option value="">Semua arus</option><option value="credit" ${state.kind === 'credit' ? 'selected' : ''}>Uang masuk</option><option value="debit" ${state.kind === 'debit' ? 'selected' : ''}>Uang keluar</option></select>

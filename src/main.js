@@ -194,6 +194,22 @@ async function handleClick(event) {
   const button = event.target.closest('[data-act]');
   if (!button) return;
   const { act, tab } = button.dataset;
+  if (act === 'category-recap-filter') {
+    const category = button.dataset.category || '';
+    const kind = button.dataset.kind || '';
+    const isSelected = state.category === category && state.kind === kind;
+    state.category = isSelected ? '' : category;
+    state.kind = isSelected ? '' : kind;
+    render();
+    document.querySelector('#cashflow-transactions')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (act === 'clear-category-recap') {
+    state.category = '';
+    state.kind = '';
+    render();
+    return;
+  }
   if (act === 'navigate') {
     if (['logs-input', 'accounts'].includes(tab) && state.profile?.role !== 'developer') return;
     state.tab = tab;
