@@ -240,8 +240,7 @@ async function handleClick(event) {
   }
   if (act === 'toggle-invoice-customer') {
     const key = button.dataset.customerKey;
-    const isOpen = state.expandedInvoiceCustomer === key
-      || (state.expandedInvoiceCustomer === null && button.dataset.defaultOpen === 'true');
+    const isOpen = state.expandedInvoiceCustomer === key;
     state.expandedInvoiceCustomer = isOpen ? '' : key;
     render();
     return;
