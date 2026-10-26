@@ -85,14 +85,23 @@ function trendChart(transactions, selectedMonth) {
   return `<div class="trend-chart"><div class="chart-y"><span>${money(ceiling)}</span><span>${money(ceiling / 2)}</span><span>Rp0</span></div><div class="chart-bars">${chartBars}</div></div><div class="chart-legend"><span><i class="legend-income"></i> Uang masuk</span><span><i class="legend-expense"></i> Uang keluar</span></div>`;
 }
 
-function categoryBreakdown(rows) {
-  const expenses = rows.filter((row) => row.kind === 'debit').reduce((map, row) => {
-    map.set(row.category, (map.get(row.category) || 0) + Number(row.amount || 0)); return map;
+function categoryBreakdown(rows, { allKinds = false } = {}) {
+  const totalsByCategory = rows.reduce((map, row) => {
+    if (!allKinds && row.kind !== 'debit') return map;
+    const category = String(row.category || '').trim();
+    if (!category) return map;
+    const key = JSON.stringify([category, allKinds ? row.kind : 'debit']);
+    const entry = map.get(key) || { category, kind: row.kind, amount: 0 };
+    entry.amount += Number(row.amount || 0);
+    map.set(key, entry);
+    return map;
   }, new Map());
-  const ranked = [...expenses.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7);
-  const max = ranked[0]?.[1] || 1;
-  return ranked.length ? ranked.map(([name, amount], index) => `<div class="category-row"><div class="category-row-meta"><span><i class="category-dot dot-${index % 6}"></i>${esc(name)}</span><strong>${money(amount)}</strong></div><div class="category-track"><i class="dot-bg-${index % 6}" style="width:${Math.max(3, amount / max * 100)}%"></i></div></div>`).join('')
-    : '<div class="quiet-empty">Belum ada pengeluaran untuk periode ini.</div>';
+  const ranked = [...totalsByCategory.values()].sort((a, b) => b.amount - a.amount
+    || a.category.localeCompare(b.category, 'id-ID')
+    || a.kind.localeCompare(b.kind));
+  const max = ranked[0]?.amount || 1;
+  return ranked.length ? ranked.map(({ category, kind, amount }, index) => `<div class="category-row"><div class="category-row-meta"><span><i class="category-dot dot-${index % 6}"></i>${esc(category)}${allKinds ? `<small class="category-flow">${kind === 'credit' ? 'Masuk' : 'Keluar'}</small>` : ''}</span><strong>${money(amount)}</strong></div><div class="category-track"><i class="dot-bg-${index % 6}" style="width:${Math.max(3, amount / max * 100)}%"></i></div></div>`).join('')
+    : `<div class="quiet-empty">${allKinds ? 'Belum ada transaksi untuk periode ini.' : 'Belum ada pengeluaran untuk periode ini.'}</div>`;
 }
 
 function dashboard(state) {
@@ -119,7 +128,7 @@ function cashflow(state) {
   return `${periodHead(state.month, 'Buku kas', 'Catat dan telusuri setiap uang masuk dan keluar.', button('Tambah transaksi', 'new-transaction'))}
     <section class="opening-card"><div><p class="eyebrow">SALDO AWAL</p><h2>${money(state.settings?.opening_balance || 0)}</h2><p>Saldo per ${formatDate(state.settings?.opening_balance_date)}</p></div>${button('Atur saldo awal', 'edit-opening', 'secondary', 'edit')}</section>
     <div class="summary-grid"><div class="summary-item"><span>Saldo berjalan</span><strong>${money(currentBalance)}</strong></div><div class="summary-item"><span>Uang masuk bulan ini</span><strong class="credit">${money(sums.income)}</strong></div><div class="summary-item"><span>Uang keluar bulan ini</span><strong class="debit">${money(sums.expense)}</strong></div><div class="summary-item"><span>Arus bersih bulan ini</span><strong>${money(sums.net)}</strong></div></div>
-    <section class="panel"> ${panelTitle('KATEGORI', 'Pengeluaran bulan ini', monthName(state.month))}<div class="category-breakdown"> ${categoryBreakdown(monthRows)}</div></section>
+    <section class="panel"> ${panelTitle('KATEGORI', 'Rekap kategori bulan ini', monthName(state.month))}<div class="category-breakdown"> ${categoryBreakdown(monthRows, { allKinds: true })}</div></section>
     <section class="panel"> ${panelTitle('BUKU KAS', 'Daftar transaksi', `${number(rows.length)} transaksi sesuai filter.`)}
       <div class="toolbar"><label class="search-field">${icon('search', 17)}<input data-filter="search" value="${esc(state.search)}" placeholder="Cari pengaju atau keterangan"></label>
         <select class="select-compact" data-filter="category"><option value="">Semua kategori</option>${categories.map((item) => `<option value="${esc(item)}" ${item === state.category ? 'selected' : ''}>${esc(item)}</option>`).join('')}</select>

@@ -167,6 +167,7 @@ button:disabled { opacity: .52; cursor: wait; }
 .category-breakdown { display: grid; gap: 14px; }
 .category-row-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; color: #6e7c84; font-size: .71rem; }
 .category-row-meta span { display: inline-flex; align-items: center; gap: 8px; }
+.category-flow { padding: 2px 6px; border-radius: 99px; background: #eef3ec; color: #63816a; font-size: .58rem; font-weight: 700; }
 .category-row-meta strong { color: var(--ink); font: 600 .7rem 'DM Mono', monospace; }
 .category-dot { width: 8px; height: 8px; border-radius: 50%; background: #438956; }
 .dot-1 { background: #6a90bc; } .dot-2 { background: #d2864f; } .dot-3 { background: #9579b2; } .dot-4 { background: #c65f59; } .dot-5 { background: #b39c47; }
