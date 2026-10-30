@@ -184,6 +184,18 @@ function invoiceExportRows() {
       || (a.invoice_number || '').localeCompare(b.invoice_number || '', 'id-ID'));
 }
 
+function invoiceDetailsWithContractRows(invoiceRows) {
+  return invoiceRows.map((row) => {
+    const contract = contractForInvoice(row);
+    return {
+      ...row,
+      contractAmount: contract ? Number(contract.contract_amount || 0) : null,
+      contractPaidAmount: contract ? contractPaidAmount(contract) : null,
+      contractRemaining: contract ? contractRemaining(contract) : null,
+    };
+  });
+}
+
 function exportCsv() {
   const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
   downloadCashflowCsv(cashflowExportRows(), cashbook, state.month);
@@ -208,6 +220,7 @@ async function exportCashflowExcel() {
 async function exportInvoicesExcel() {
   try {
     const { downloadInvoiceExcel } = await import('./exports.js');
+    const invoiceRows = invoiceDetailsWithContractRows(invoiceExportRows());
     const periodLabel = state.invoicePeriod
       ? new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(`${state.invoicePeriod}-15T12:00:00`))
       : 'Semua periode';
@@ -217,7 +230,7 @@ async function exportInvoicesExcel() {
       : state.invoiceStatus === 'partial' ? 'Sudah ada pembayaran'
         : state.invoiceStatus === 'paid' ? 'Lunas'
           : state.invoiceStatus === 'late' ? 'Ada invoice jatuh tempo' : 'Semua kontrak';
-    await downloadInvoiceExcel(invoiceExportRows(), today(), periodLabel, paymentStatusLabel, contractStatusLabel);
+    await downloadInvoiceExcel(invoiceRows, today(), periodLabel, paymentStatusLabel, contractStatusLabel);
     notify('File Excel invoice berhasil dibuat.');
   } catch (error) {
     console.error('Gagal membuat file Excel invoice:', error);

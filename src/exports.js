@@ -216,15 +216,17 @@ export async function downloadCashflowExcel(rows, cashbook, month, monthLabel) {
 }
 
 export async function downloadInvoiceExcel(rows, date, periodLabel, paymentStatusLabel, contractStatusLabel) {
-  const workbook = newWorkbook('Invoice customer', 'Rekap invoice dan status pembayaran');
+  const workbook = newWorkbook('Invoice customer', 'Rincian invoice dan posisi kontrak per customer');
   const sheet = workbook.addWorksheet('Invoice');
   setSheetDefaults(sheet);
-  sheet.views = [{ state: 'frozen', ySplit: 7, topLeftCell: 'A8', showGridLines: false, zoomScale: 85 }];
+  sheet.properties.tabColor = { argb: palette.navy };
+  sheet.views = [{ state: 'frozen', xSplit: 4, ySplit: 7, topLeftCell: 'E8', showGridLines: false, zoomScale: 75 }];
   sheet.columns = [
-    { width: 30 }, { width: 19 }, { width: 19 }, { width: 17 }, { width: 17 },
-    { width: 21 }, { width: 21 }, { width: 21 }, { width: 22 }, { width: 23 },
+    { width: 29 }, { width: 20 }, { width: 23 }, { width: 20 }, { width: 16 },
+    { width: 18 }, { width: 18 }, { width: 16 }, { width: 20 }, { width: 20 },
+    { width: 20 }, { width: 21 }, { width: 23 },
   ];
-  styleTitle(sheet, 'REKAPITULASI INVOICE CUSTOMER', 'PT Swatama Karya Gemilang - Data mengikuti filter aktif saat diekspor.', 10);
+  styleTitle(sheet, 'RINCIAN INVOICE CUSTOMER', 'Nilai kontrak, dibayar kontrak, dan sisa kontrak diulang pada setiap invoice customer. Pembayaran kontrak menghitung seluruh invoice terkait.', 13);
   styleMetadata(sheet, 3, [
     [1, 'Periode invoice', 2, periodLabel], [4, 'Status pembayaran', 5, paymentStatusLabel], [7, 'Tanggal ekspor', 8, dateForExcel(date)],
   ]);
@@ -235,44 +237,62 @@ export async function downloadInvoiceExcel(rows, date, periodLabel, paymentStatu
   const outstanding = rows.reduce((sum, row) => sum + Math.max(asNumber(row.amount) - asNumber(row.paid_amount), 0), 0);
   styleSummary(sheet, 5, [
     { column: 1, label: 'TOTAL NILAI INVOICE', value: total },
-    { column: 3, label: 'TOTAL SUDAH DIBAYAR', value: paid, tone: 'income' },
-    { column: 5, label: 'TOTAL SISA TAGIHAN', value: outstanding, tone: 'outstanding' },
+    { column: 3, label: 'TOTAL DIBAYAR INVOICE', value: paid, tone: 'income' },
+    { column: 5, label: 'SISA TAGIHAN INVOICE', value: outstanding, tone: 'outstanding' },
     { column: 8, label: 'JUMLAH INVOICE', value: rows.length, tone: 'count' },
   ]);
-  const headers = ['Customer', 'No. invoice', 'No. PO', 'Tanggal invoice', 'Jatuh tempo', 'Nilai invoice', 'Sudah dibayar', 'Sisa tagihan', 'Status pembayaran', 'Tanggal pembayaran terakhir'];
+  const headers = [
+    'Customer', 'Nilai kontrak', 'Sudah dibayar (kontrak)', 'Sisa kontrak',
+    'Tanggal invoice', 'No. invoice', 'No. PO', 'Jatuh tempo', 'Nilai invoice',
+    'Sudah dibayar (invoice)', 'Sisa tagihan invoice', 'Status pembayaran', 'Tanggal pembayaran terakhir',
+  ];
   const headerRow = 7;
   const head = sheet.getRow(headerRow);
   headers.forEach((label, index) => { head.getCell(index + 1).value = label; });
   rows.forEach((row) => {
     sheet.addRow([
-      row.customer || 'Customer belum dicatat', row.invoice_number || '', row.po_number || '',
-      dateForExcel(row.invoice_date), dateForExcel(row.due_date), asNumber(row.amount), asNumber(row.paid_amount),
+      row.customer || 'Customer belum dicatat', row.contractAmount ?? 'Belum dicatat', row.contractPaidAmount,
+      row.contractRemaining, dateForExcel(row.invoice_date), row.invoice_number || '', row.po_number || '',
+      dateForExcel(row.due_date), asNumber(row.amount), asNumber(row.paid_amount),
       Math.max(asNumber(row.amount) - asNumber(row.paid_amount), 0), row.statusLabel, dateForExcel(row.paid_date),
     ]);
   });
   const lastRow = headerRow + rows.length;
   styleTableHeader(sheet, headerRow, headers.length);
-  styleBodyRows(sheet, headerRow + 1, lastRow, headers.length, [1]);
+  styleBodyRows(sheet, headerRow + 1, lastRow, headers.length, [1, 2]);
   sheet.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: lastRow, column: headers.length } };
   for (let rowNumber = headerRow + 1; rowNumber <= lastRow; rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
-    [4, 5, 10].forEach((column) => { row.getCell(column).numFmt = 'dd/mm/yyyy'; row.getCell(column).alignment = { horizontal: 'center', vertical: 'middle' }; });
-    [6, 7, 8].forEach((column) => { row.getCell(column).numFmt = amountFormat; row.getCell(column).alignment = { horizontal: 'right', vertical: 'middle' }; });
-    row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.blue } };
-    row.getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.green } };
-    row.getCell(7).font = { name: 'Aptos', size: 10, color: { argb: palette.greenText } };
-    row.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.amber } };
-    row.getCell(8).font = { name: 'Aptos', size: 10, bold: true, color: { argb: palette.amberText } };
-    const statusCell = row.getCell(9);
-    const statusTone = row.getCell(8).value <= 0 ? 'paid' : row.getCell(9).value === 'Jatuh tempo' ? 'late' : row.getCell(9).value === 'Sebagian dibayar' ? 'partial' : 'open';
+    [5, 8, 13].forEach((column) => { row.getCell(column).numFmt = 'dd/mm/yyyy'; row.getCell(column).alignment = { horizontal: 'center', vertical: 'middle' }; });
+    [2, 3, 4, 9, 10, 11].forEach((column) => { row.getCell(column).numFmt = amountFormat; row.getCell(column).alignment = { horizontal: 'right', vertical: 'middle' }; });
+    if (row.getCell(2).value === 'Belum dicatat') {
+      [2, 3, 4].forEach((column) => {
+        row.getCell(column).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.paper } };
+        row.getCell(column).font = { name: 'Aptos', size: 9, italic: true, color: { argb: palette.muted } };
+      });
+    } else {
+      row.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.blue } };
+      row.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.green } };
+      row.getCell(3).font = { name: 'Aptos', size: 10, color: { argb: palette.greenText } };
+      row.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.amber } };
+      row.getCell(4).font = { name: 'Aptos', size: 10, bold: true, color: { argb: palette.amberText } };
+    }
+    row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.blue } };
+    row.getCell(10).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.green } };
+    row.getCell(10).font = { name: 'Aptos', size: 10, color: { argb: palette.greenText } };
+    row.getCell(11).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.amber } };
+    row.getCell(11).font = { name: 'Aptos', size: 10, bold: true, color: { argb: palette.amberText } };
+    const statusCell = row.getCell(12);
+    const statusTone = row.getCell(11).value <= 0 ? 'paid' : row.getCell(12).value === 'Jatuh tempo' ? 'late' : row.getCell(12).value === 'Sebagian dibayar' ? 'partial' : 'open';
     const statusColors = statusTone === 'paid' ? [palette.green, palette.greenText]
       : statusTone === 'late' ? [palette.red, palette.redText]
-      : statusTone === 'partial' ? [palette.violet, 'FF775D92'] : [palette.amber, palette.amberText];
+        : statusTone === 'partial' ? [palette.violet, 'FF775D92'] : [palette.amber, palette.amberText];
     statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: statusColors[0] } };
     statusCell.font = { name: 'Aptos', size: 9, bold: true, color: { argb: statusColors[1] } };
-    statusCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    statusCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   }
-  sheet.getColumn(2).alignment = { vertical: 'middle', horizontal: 'left' };
-  sheet.getColumn(3).alignment = { vertical: 'middle', horizontal: 'left' };
+  sheet.getColumn(5).alignment = { vertical: 'middle', horizontal: 'center' };
+  sheet.getColumn(6).alignment = { vertical: 'middle', horizontal: 'left' };
+  sheet.getColumn(7).alignment = { vertical: 'middle', horizontal: 'left' };
   return downloadWorkbook(workbook, `invoice-customer-${periodLabel === 'Semua periode' ? 'semua-periode' : periodLabel.replaceAll(' ', '-')}-${date}.xlsx`);
 }
