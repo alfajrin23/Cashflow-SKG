@@ -189,11 +189,15 @@ function invoiceDetailsWithContractRows(invoiceRows) {
     const contract = contractForInvoice(row);
     return {
       ...row,
+      contractGroupKey: contract?.id || `legacy:${normalizedCustomer(row.customer)}`,
       contractAmount: contract ? Number(contract.contract_amount || 0) : null,
       contractPaidAmount: contract ? contractPaidAmount(contract) : null,
       contractRemaining: contract ? contractRemaining(contract) : null,
     };
-  });
+  }).sort((a, b) => normalizedCustomer(a.customer).localeCompare(normalizedCustomer(b.customer), 'id-ID')
+    || (a.contractGroupKey || '').localeCompare(b.contractGroupKey || '', 'id-ID')
+    || (a.invoice_date || '').localeCompare(b.invoice_date || '')
+    || (a.invoice_number || '').localeCompare(b.invoice_number || '', 'id-ID'));
 }
 
 function exportCsv() {

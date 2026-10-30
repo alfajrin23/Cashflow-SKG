@@ -226,7 +226,7 @@ export async function downloadInvoiceExcel(rows, date, periodLabel, paymentStatu
     { width: 18 }, { width: 18 }, { width: 16 }, { width: 20 }, { width: 20 },
     { width: 20 }, { width: 21 }, { width: 23 },
   ];
-  styleTitle(sheet, 'RINCIAN INVOICE CUSTOMER', 'Nilai kontrak, dibayar kontrak, dan sisa kontrak diulang pada setiap invoice customer. Pembayaran kontrak menghitung seluruh invoice terkait.', 13);
+  styleTitle(sheet, 'RINCIAN INVOICE CUSTOMER', 'Customer serta nilai kontrak, pembayaran, dan sisa kontrak digabung untuk baris invoice customer yang sama.', 13);
   styleMetadata(sheet, 3, [
     [1, 'Periode invoice', 2, periodLabel], [4, 'Status pembayaran', 5, paymentStatusLabel], [7, 'Tanggal ekspor', 8, dateForExcel(date)],
   ]);
@@ -260,7 +260,6 @@ export async function downloadInvoiceExcel(rows, date, periodLabel, paymentStatu
   const lastRow = headerRow + rows.length;
   styleTableHeader(sheet, headerRow, headers.length);
   styleBodyRows(sheet, headerRow + 1, lastRow, headers.length, [1, 2]);
-  sheet.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: lastRow, column: headers.length } };
   for (let rowNumber = headerRow + 1; rowNumber <= lastRow; rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
     [5, 8, 13].forEach((column) => { row.getCell(column).numFmt = 'dd/mm/yyyy'; row.getCell(column).alignment = { horizontal: 'center', vertical: 'middle' }; });
@@ -290,6 +289,41 @@ export async function downloadInvoiceExcel(rows, date, periodLabel, paymentStatu
     statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: statusColors[0] } };
     statusCell.font = { name: 'Aptos', size: 9, bold: true, color: { argb: statusColors[1] } };
     statusCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  }
+  let customerStartIndex = 0;
+  while (customerStartIndex < rows.length) {
+    const customerKey = String(rows[customerStartIndex].customer || '').trim().toLocaleLowerCase('id-ID');
+    let customerEndIndex = customerStartIndex + 1;
+    while (customerEndIndex < rows.length
+      && String(rows[customerEndIndex].customer || '').trim().toLocaleLowerCase('id-ID') === customerKey) {
+      customerEndIndex += 1;
+    }
+    const customerStartRow = headerRow + 1 + customerStartIndex;
+    const customerEndRow = headerRow + customerEndIndex;
+    if (customerEndRow > customerStartRow) {
+      sheet.mergeCells(customerStartRow, 1, customerEndRow, 1);
+      sheet.getCell(customerStartRow, 1).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    }
+
+    let contractStartIndex = customerStartIndex;
+    while (contractStartIndex < customerEndIndex) {
+      const contractKey = rows[contractStartIndex].contractGroupKey || '';
+      let contractEndIndex = contractStartIndex + 1;
+      while (contractEndIndex < customerEndIndex
+        && (rows[contractEndIndex].contractGroupKey || '') === contractKey) {
+        contractEndIndex += 1;
+      }
+      const contractStartRow = headerRow + 1 + contractStartIndex;
+      const contractEndRow = headerRow + contractEndIndex;
+      if (contractEndRow > contractStartRow) {
+        [2, 3, 4].forEach((column) => sheet.mergeCells(contractStartRow, column, contractEndRow, column));
+      }
+      [2, 3, 4].forEach((column) => {
+        sheet.getCell(contractStartRow, column).alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
+      });
+      contractStartIndex = contractEndIndex;
+    }
+    customerStartIndex = customerEndIndex;
   }
   sheet.getColumn(5).alignment = { vertical: 'middle', horizontal: 'center' };
   sheet.getColumn(6).alignment = { vertical: 'middle', horizontal: 'left' };
