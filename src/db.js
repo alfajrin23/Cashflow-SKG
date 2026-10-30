@@ -26,6 +26,25 @@ export async function loadSettings() {
   return data;
 }
 
+export async function loadCashbooks() {
+  const { data, error } = await supabase.from('cashflow_accounts')
+    .select('id, name, bank_name, account_number, opening_balance, opening_balance_date, created_at')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function saveCashbook(values, id) {
+  const query = id
+    ? supabase.from('cashflow_accounts').update(values).eq('id', id)
+    : supabase.from('cashflow_accounts').insert({ ...values, workspace_id: workspaceId });
+  const { data, error } = await query
+    .select('id, name, bank_name, account_number, opening_balance, opening_balance_date, created_at')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function saveSettings(values) {
   const { data, error } = await supabase.from('cashflow_settings')
     .upsert({ ...values, workspace_id: workspaceId }, { onConflict: 'workspace_id' })
@@ -39,7 +58,7 @@ export async function loadTransactions() {
   const pageSize = 1000;
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase.from('cashflow_transactions')
-      .select('id, transaction_date, kind, category, requester, description, amount, created_at')
+      .select('id, account_id, transaction_date, kind, category, requester, description, amount, receipt_sent_to_office, created_at')
       .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false })
       .range(offset, offset + pageSize - 1);
@@ -53,7 +72,16 @@ export async function saveTransaction(values, id) {
   const query = id
     ? supabase.from('cashflow_transactions').update(values).eq('id', id)
     : supabase.from('cashflow_transactions').insert({ ...values, workspace_id: workspaceId });
-  const { data, error } = await query.select('id, transaction_date, kind, category, requester, description, amount, created_at').single();
+  const { data, error } = await query.select('id, account_id, transaction_date, kind, category, requester, description, amount, receipt_sent_to_office, created_at').single();
+  if (error) throw error;
+  return data;
+}
+
+export async function setReceiptSentToOffice(id, sent) {
+  const { data, error } = await supabase.from('cashflow_transactions')
+    .update({ receipt_sent_to_office: sent }).eq('id', id)
+    .select('id, account_id, transaction_date, kind, category, requester, description, amount, receipt_sent_to_office, created_at')
+    .single();
   if (error) throw error;
   return data;
 }

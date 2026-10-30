@@ -91,6 +91,7 @@ button:disabled { opacity: .52; cursor: wait; }
 .heading-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .month-control { display: inline-flex; align-items: center; gap: 10px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 99px; background: rgba(255, 254, 250, .72); color: var(--muted); font-size: .72rem; font-weight: 700; }
 .month-control input { min-width: 116px; padding: 0; border: 0; background: transparent; color: var(--navy); font: 700 .78rem 'DM Sans', sans-serif; }
+.month-control select { max-width: 190px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--navy); font: 700 .75rem 'DM Sans', sans-serif; }
 
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 15px; border: 1px solid transparent; border-radius: 12px; cursor: pointer; font-size: .76rem; font-weight: 800; transition: transform .18s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease); }
 .button:hover { transform: translateY(-1px); }
@@ -224,6 +225,13 @@ tbody tr:hover { background: #fbfaf6; }
 .flow-pill { display: inline-flex; padding: 5px 8px; border-radius: 99px; font-size: .63rem; font-weight: 800; white-space: nowrap; }
 .flow-pill.income { background: #e9f3e8; color: #287443; }
 .flow-pill.expense { background: #fbefea; color: #b14b3d; }
+.receipt-cell { min-width: 150px; }
+.receipt-status { display: block; width: fit-content; margin-bottom: 5px; padding: 4px 7px; border-radius: 99px; font-size: .6rem; font-weight: 800; white-space: nowrap; }
+.receipt-status.pending { background: #fff3df; color: #92661f; }
+.receipt-status.sent { background: #e9f3e8; color: #287443; }
+.receipt-action { padding: 0; border: 0; background: transparent; color: #397548; cursor: pointer; font: 700 .62rem 'DM Sans', sans-serif; white-space: nowrap; }
+.receipt-action.sent { color: #8c6b62; }
+.receipt-action:disabled { cursor: wait; opacity: .55; }
 .invoice-status { display: inline-flex; padding: 5px 9px; border: 1px solid transparent; border-radius: 99px; font-size: .63rem; font-weight: 800; white-space: nowrap; }
 .invoice-status-action { align-items: center; justify-content: center; background: transparent; cursor: pointer; font-family: inherit; }
 .invoice-status-action:hover { filter: brightness(.96); box-shadow: 0 0 0 2px rgba(32, 60, 99, .08); }
@@ -414,6 +422,8 @@ tbody tr:hover { background: #fbfaf6; }
   .heading-actions { width: 100%; flex-wrap: wrap; }
   .heading-actions .button { flex: 1; }
   .month-control { flex: 1; justify-content: space-between; }
+  .cashbook-control { flex-basis: 100%; }
+  .cashbook-control select { max-width: none; flex: 1; text-align: right; }
   .metric-grid { gap: 8px; }
   .metric-card { min-height: 130px; padding: 13px; border-radius: 16px 16px 16px 6px; }
   .metric-top { font-size: .58rem; letter-spacing: .04em; }

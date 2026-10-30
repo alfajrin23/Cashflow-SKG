@@ -1,7 +1,7 @@
 import {
-  deleteInvoice, deleteTransaction, isConfigured, loadCustomerContracts, loadInputLogs, loadInvoices, loadProfile, loadSettings,
-  loadTransactions, loadWorkspaceUsers, saveCustomerContract, saveInvoice, saveSettings, saveTransaction,
-  setWorkspaceId, setWorkspaceUserRole, supabase,
+  deleteInvoice, deleteTransaction, isConfigured, loadCashbooks, loadCustomerContracts, loadInputLogs, loadInvoices, loadProfile,
+  loadTransactions, loadWorkspaceUsers, saveCashbook, saveCustomerContract, saveInvoice, saveTransaction,
+  setReceiptSentToOffice, setWorkspaceId, setWorkspaceUserRole, supabase,
 } from './db.js';
 import { formatAmountInput, parseAmountInput, statusForInvoice, today } from './helpers.js';
 import { renderApp } from './views.js';
@@ -11,8 +11,8 @@ const now = today();
 const state = {
   configured: isConfigured, session: null, profile: null, profileLoading: false,
   profileError: '', authMode: 'login', authMessage: '', authMessageType: 'info',
-  month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], invoices: [], contracts: [],
-  settings: null, inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '', invoicePaymentStatus: '',
+  month: now.slice(0, 7), today: now, tab: 'dashboard', transactions: [], cashbooks: [], invoices: [], contracts: [],
+  selectedCashbookId: '', inputLogs: [], profiles: [], category: '', kind: '', search: '', invoiceStatus: '', invoicePaymentStatus: '',
   expandedInvoiceCustomer: null, invoicePeriod: '', invoiceRecapExpanded: false,
   incomeWeek: '', incomePlanPeriod: 'week',
   loading: false, busy: false, error: '', modal: null, toast: null,
@@ -45,8 +45,8 @@ async function loadData({ withLogs = false, withUsers = false, withInvoices = fa
   state.error = '';
   render();
   try {
-    const [settings, transactions, logs, profiles, invoices, contracts] = await Promise.all([
-      loadSettings(),
+    const [cashbooks, transactions, logs, profiles, invoices, contracts] = await Promise.all([
+      loadCashbooks(),
       loadTransactions(),
       withLogs && state.profile.role === 'developer' ? loadInputLogs(state.month) : Promise.resolve(null),
       withUsers && state.profile.role === 'developer' ? loadWorkspaceUsers() : Promise.resolve(null),
@@ -54,7 +54,10 @@ async function loadData({ withLogs = false, withUsers = false, withInvoices = fa
       withInvoices ? loadCustomerContracts() : Promise.resolve(null),
     ]);
     if (state.session?.user?.id !== userId) return;
-    state.settings = settings;
+    state.cashbooks = cashbooks;
+    if (!cashbooks.some((book) => book.id === state.selectedCashbookId)) {
+      state.selectedCashbookId = cashbooks[0]?.id || '';
+    }
     state.transactions = transactions;
     if (logs) state.inputLogs = logs;
     if (profiles) state.profiles = profiles;
@@ -79,9 +82,10 @@ async function activateSession(session) {
   state.inputLogs = [];
   state.profiles = [];
   state.transactions = [];
+  state.cashbooks = [];
+  state.selectedCashbookId = '';
   state.invoices = [];
   state.contracts = [];
-  state.settings = null;
   setWorkspaceId(null);
   if (!session) {
     state.profileLoading = false;
@@ -146,12 +150,14 @@ function contractRemaining(contract) {
 
 function exportCsv() {
   const filtered = state.transactions.filter((row) => row.transaction_date?.slice(0, 7) === state.month
+    && row.account_id === state.selectedCashbookId
     && (!state.category || row.category === state.category)
     && (!state.kind || row.kind === state.kind)
     && (!state.search || `${row.category} ${row.requester} ${row.description}`.toLocaleLowerCase('id-ID').includes(state.search.toLocaleLowerCase('id-ID'))));
   const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const lines = [['Tanggal', 'Jenis', 'Kategori', 'Pengaju / Sumber', 'Keterangan', 'Nominal'],
-    ...filtered.map((row) => [row.transaction_date, row.kind === 'credit' ? 'Uang masuk' : 'Uang keluar', row.category, row.requester, row.description, row.amount])];
+  const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
+  const lines = [['Buku kas', 'Bank / rekening', 'Tanggal', 'Jenis', 'Kategori', 'Pengaju / Sumber', 'Keterangan', 'Nominal', 'Bukti dikirim ke office'],
+    ...filtered.map((row) => [cashbook?.name || '', cashbook?.bank_name || '', row.transaction_date, row.kind === 'credit' ? 'Uang masuk' : 'Uang keluar', row.category, row.requester, row.description, row.amount, row.receipt_sent_to_office ? 'Sudah' : 'Belum'])];
   const csv = '\ufeff' + lines.map((line) => line.map(quote).join(',')).join('\r\n');
   const link = document.createElement('a');
   link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -230,6 +236,7 @@ async function handleClick(event) {
     return;
   }
   if (act === 'new-transaction') { openTransaction(); return; }
+  if (act === 'new-cashbook') { state.modal = { type: 'cashbook', row: {} }; render(); return; }
   if (act === 'new-customer-contract') {
     state.modal = { type: 'contract', row: { customer: button.dataset.customer || '' } };
     render();
@@ -320,8 +327,34 @@ async function handleClick(event) {
     } catch (error) { notify(message(error), 'error'); }
     return;
   }
+  if (act === 'toggle-receipt-sent') {
+    const row = state.transactions.find((item) => item.id === button.dataset.id);
+    if (!row) return;
+    const sent = !row.receipt_sent_to_office;
+    const confirmation = sent
+      ? `Konfirmasi bukti transaksi ${row.category} sebesar Rp ${Number(row.amount).toLocaleString('id-ID')} sudah dikirim ke office?`
+      : `Batalkan konfirmasi bukti transaksi ${row.category} sudah dikirim ke office?`;
+    if (!window.confirm(confirmation)) return;
+    state.busy = true;
+    render();
+    try {
+      const updated = await setReceiptSentToOffice(row.id, sent);
+      state.transactions = state.transactions.map((item) => item.id === updated.id ? updated : item);
+      state.inputLogs = [];
+      state.busy = false;
+      render();
+      notify(sent ? 'Bukti ditandai sudah dikirim ke office.' : 'Konfirmasi pengiriman bukti dibatalkan.');
+    } catch (error) {
+      state.busy = false;
+      render();
+      notify(message(error), 'error');
+    }
+    return;
+  }
   if (act === 'edit-opening') {
-    state.modal = { type: 'opening', row: state.settings || {} };
+    const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
+    if (!cashbook) return;
+    state.modal = { type: 'opening', row: cashbook };
     render();
     return;
   }
@@ -374,6 +407,14 @@ function handleInput(event) {
 
 async function handleChange(event) {
   const target = event.target;
+  if (target.matches('[data-filter="cashbook"]')) {
+    state.selectedCashbookId = target.value;
+    state.category = '';
+    state.kind = '';
+    state.search = '';
+    render();
+    return;
+  }
   if (target.matches('[data-customer-payment-invoice]')) {
     const invoice = state.invoices.find((row) => row.id === target.value);
     const amountInput = target.form?.querySelector('[name="payment_amount"]');
@@ -472,6 +513,23 @@ async function handleSubmit(event) {
     notify('Kategori transaksi wajib diisi.', 'error');
     return;
   }
+  if (form.dataset.kind === 'transaction' && !state.cashbooks.some((book) => book.id === values.account_id)) {
+    notify('Pilih buku kas yang valid.', 'error');
+    return;
+  }
+  if (form.dataset.kind === 'cashbook') {
+    const name = String(values.name || '').trim();
+    if (!name) { notify('Nama buku kas wajib diisi.', 'error'); return; }
+    if (name.length > 80) { notify('Nama buku kas maksimal 80 karakter.', 'error'); return; }
+    if (state.cashbooks.some((book) => book.name.toLocaleLowerCase('id-ID') === name.toLocaleLowerCase('id-ID'))) {
+      notify('Nama buku kas tersebut sudah digunakan.', 'error');
+      return;
+    }
+  }
+  if (form.dataset.kind === 'opening' && !state.cashbooks.some((book) => book.id === form.dataset.id)) {
+    notify('Buku kas tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error');
+    return;
+  }
   if (form.dataset.kind === 'invoice') {
     const amount = parseAmountInput(values.amount);
     const paidAmount = parseAmountInput(values.paid_amount);
@@ -548,10 +606,25 @@ async function handleSubmit(event) {
   render();
   try {
     if (form.dataset.kind === 'opening') {
-      state.settings = await saveSettings({
+      const cashbook = await saveCashbook({
+        opening_balance: parseAmountInput(values.opening_balance),
+        opening_balance_date: values.opening_balance_date,
+      }, form.dataset.id);
+      state.cashbooks = state.cashbooks.map((book) => book.id === cashbook.id ? cashbook : book);
+      state.inputLogs = [];
+    } else if (form.dataset.kind === 'cashbook') {
+      const cashbook = await saveCashbook({
+        name: values.name.trim(),
+        bank_name: values.bank_name.trim(),
+        account_number: values.account_number.trim(),
         opening_balance: parseAmountInput(values.opening_balance),
         opening_balance_date: values.opening_balance_date,
       });
+      state.cashbooks = [...state.cashbooks, cashbook];
+      state.selectedCashbookId = cashbook.id;
+      state.category = '';
+      state.kind = '';
+      state.search = '';
       state.inputLogs = [];
     } else if (form.dataset.kind === 'contract') {
       const contract = await saveCustomerContract(form.dataset.id
@@ -615,6 +688,7 @@ async function handleSubmit(event) {
       state.inputLogs = [];
     } else {
       const row = await saveTransaction({
+        account_id: values.account_id,
         transaction_date: values.transaction_date,
         kind: values.kind,
         category: values.category.trim(),
@@ -629,7 +703,9 @@ async function handleSubmit(event) {
     state.modal = null;
     state.busy = false;
     render();
-    notify(form.dataset.kind === 'contract' ? (form.dataset.id ? 'Nilai kontrak berhasil diperbarui.' : 'Kontrak berhasil disimpan.')
+    notify(form.dataset.kind === 'cashbook' ? 'Buku kas baru berhasil dibuat.'
+      : form.dataset.kind === 'opening' ? 'Saldo awal buku kas diperbarui.'
+      : form.dataset.kind === 'contract' ? (form.dataset.id ? 'Nilai kontrak berhasil diperbarui.' : 'Kontrak berhasil disimpan.')
       : form.dataset.kind === 'contract-payment' ? 'Pembayaran kontrak berhasil dicatat.'
         : form.dataset.kind === 'confirm-invoice-paid' ? 'Status invoice diperbarui menjadi lunas.'
         : ['invoice-payment', 'customer-payment'].includes(form.dataset.kind) ? 'Pembayaran invoice berhasil dicatat.'

@@ -30,23 +30,30 @@ function periodHead(month, title, description, action = '') {
 function filteredTransactions(state, category = '', kind = '') {
   const term = state.search.trim().toLocaleLowerCase('id-ID');
   return state.transactions.filter((row) => inMonth(row.transaction_date, state.month)
+    && row.account_id === state.selectedCashbookId
     && (!category || row.category === category)
     && (!kind || row.kind === kind)
     && (!term || `${row.category} ${row.requester} ${row.description}`.toLocaleLowerCase('id-ID').includes(term)));
 }
 
-function tableRows(rows, actionButtons = true) {
+function cashbookName(state, accountId) {
+  return state.cashbooks.find((book) => book.id === accountId)?.name || 'Buku kas';
+}
+
+function tableRows(rows, state, actionButtons = true) {
   return rows.map((row) => `<tr><td>${formatDate(row.transaction_date)}</td>
+    <td><span class="tag">${esc(cashbookName(state, row.account_id))}</span></td>
     <td><span class="tag">${esc(row.category)}</span></td><td>${esc(row.requester || '—')}</td>
     <td class="description-cell">${esc(row.description || '—')}</td>
     <td><span class="flow-pill ${row.kind === 'credit' ? 'income' : 'expense'}">${row.kind === 'credit' ? 'Masuk' : 'Keluar'}</span></td>
     <td class="numeric ${row.kind === 'credit' ? 'credit' : 'debit'}">${row.kind === 'credit' ? '+' : '−'} ${money(row.amount)}</td>
-    ${actionButtons ? `<td class="row-actions"><button class="icon-button" type="button" data-act="edit" data-id="${row.id}" aria-label="Edit">${icon('edit', 16)}</button><button class="icon-button danger-icon" type="button" data-act="delete" data-id="${row.id}" aria-label="Hapus">${icon('trash', 16)}</button></td>` : ''}</tr>`).join('');
+    <td class="receipt-cell"><span class="receipt-status ${row.receipt_sent_to_office ? 'sent' : 'pending'}">${row.receipt_sent_to_office ? 'Sudah dikirim' : 'Belum dikirim'}</span><button class="receipt-action ${row.receipt_sent_to_office ? 'sent' : ''}" type="button" data-act="toggle-receipt-sent" data-id="${row.id}" ${state.busy ? 'disabled' : ''}>${row.receipt_sent_to_office ? 'Batalkan' : 'Konfirmasi kirim'}</button></td>
+    ${actionButtons ? `<td class="row-actions"><button class="icon-button" type="button" data-act="edit" data-id="${row.id}" aria-label="Edit" ${state.busy ? 'disabled' : ''}>${icon('edit', 16)}</button><button class="icon-button danger-icon" type="button" data-act="delete" data-id="${row.id}" aria-label="Hapus" ${state.busy ? 'disabled' : ''}>${icon('trash', 16)}</button></td>` : ''}</tr>`).join('');
 }
 
-function transactionTable(rows, emptyText = 'Belum ada transaksi pada periode ini.') {
+function transactionTable(rows, state, emptyText = 'Belum ada transaksi pada periode ini.') {
   return rows.length
-    ? `<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Kategori</th><th>Pengaju</th><th>Keterangan</th><th>Arus</th><th class="numeric">Nominal</th><th class="actions-heading">Aksi</th></tr></thead><tbody>${tableRows(rows)}</tbody></table></div>`
+    ? `<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Buku kas</th><th>Kategori</th><th>Pengaju</th><th>Keterangan</th><th>Arus</th><th class="numeric">Nominal</th><th>Bukti ke office</th><th class="actions-heading">Aksi</th></tr></thead><tbody>${tableRows(rows, state)}</tbody></table></div>`
     : `<div class="empty-state"><div class="empty-icon">${icon('wallet', 26)}</div><h3>Belum ada transaksi</h3><p>${esc(emptyText)}</p><button class="button primary" type="button" data-act="new-transaction">${icon('plus', 17)}<span>Tambah transaksi</span></button></div>`;
 }
 
@@ -56,12 +63,13 @@ function totals(rows) {
   return { income, expense, net: income - expense };
 }
 
-function balanceAt(data, date) {
-  const settings = data.settings || {};
-  return Number(settings.opening_balance || 0) + data.transactions
-    .filter((row) => (!settings.opening_balance_date || row.transaction_date >= settings.opening_balance_date)
-      && row.transaction_date <= date)
-    .reduce((sum, row) => sum + (row.kind === 'credit' ? 1 : -1) * Number(row.amount || 0), 0);
+function balanceAt(data, date, accountId = null) {
+  return data.cashbooks.filter((book) => !accountId || book.id === accountId)
+    .reduce((total, book) => total + Number(book.opening_balance || 0) + data.transactions
+      .filter((row) => row.account_id === book.id
+        && (!book.opening_balance_date || row.transaction_date >= book.opening_balance_date)
+        && row.transaction_date <= date)
+      .reduce((sum, row) => sum + (row.kind === 'credit' ? 1 : -1) * Number(row.amount || 0), 0), 0);
 }
 
 function monthEnd(month) {
@@ -119,26 +127,29 @@ function dashboard(state) {
     <section class="focus-grid"><article class="panel"> ${panelTitle('TREN ENAM BULAN', 'Uang masuk & keluar', 'Perbandingan arus kas per bulan.')}${trendChart(state.transactions, state.month)}</article>
       <article class="panel"> ${panelTitle('PENGELUARAN', 'Kategori terbesar', `Rincian biaya pada ${monthName(state.month)}.`)}<div class="category-breakdown">${categoryBreakdown(rows)}</div></article></section>
     <section class="panel">${panelTitle('AKTIVITAS TERBARU', 'Transaksi bulan ini', `Menampilkan ${recent.length} dari ${number(rows.length)} transaksi.`)}
-      ${recent.length ? `<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Kategori</th><th>Pengaju</th><th>Keterangan</th><th>Arus</th><th class="numeric">Nominal</th></tr></thead><tbody>${tableRows(recent, false)}</tbody></table></div>` : '<div class="quiet-empty">Belum ada transaksi pada periode ini.</div>'}
+      ${recent.length ? `<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Buku kas</th><th>Kategori</th><th>Pengaju</th><th>Keterangan</th><th>Arus</th><th class="numeric">Nominal</th><th>Bukti ke office</th></tr></thead><tbody>${tableRows(recent, state, false)}</tbody></table></div>` : '<div class="quiet-empty">Belum ada transaksi pada periode ini.</div>'}
       <div class="panel-footer"><button class="text-button" type="button" data-act="navigate" data-tab="cashflow">Buka buku kas ${icon('arrow', 15)}</button></div>
     </section>`;
 }
 
 function cashflow(state) {
+  const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
+  const bookTransactions = state.transactions.filter((row) => row.account_id === state.selectedCashbookId);
   const rows = filteredTransactions(state, state.category, state.kind);
-  const monthRows = state.transactions.filter((row) => inMonth(row.transaction_date, state.month));
+  const monthRows = bookTransactions.filter((row) => inMonth(row.transaction_date, state.month));
   const sums = totals(monthRows);
   const categoryEntries = categoryTotals(monthRows, { allKinds: true });
-  const currentBalance = balanceAt(state, '9999-12-31');
-  const categories = [...new Set([...CASH_CATEGORIES, ...state.transactions.map((row) => row.category).filter(Boolean)])];
+  const currentBalance = balanceAt(state, '9999-12-31', state.selectedCashbookId);
+  const categories = [...new Set([...CASH_CATEGORIES, ...bookTransactions.map((row) => row.category).filter(Boolean)])];
   const categoryCards = categoryEntries.map(({ category, kind, amount }, index) => {
     const active = state.category === category && state.kind === kind;
     return `<button class="category-recap-card ${active ? 'is-active' : ''}" type="button" data-act="category-recap-filter" data-category="${esc(category)}" data-kind="${kind}" aria-pressed="${active}"><span class="category-recap-chip chip-${index % 6}">${esc(category)}</span><small>${kind === 'credit' ? 'Uang masuk' : 'Uang keluar'}</small><strong>${money(amount)}</strong></button>`;
   }).join('');
   const expenseActive = !state.category && state.kind === 'debit';
   const incomeActive = !state.category && state.kind === 'credit';
-  return `${periodHead(state.month, 'Buku kas', 'Catat dan telusuri setiap uang masuk dan keluar.', button('Tambah transaksi', 'new-transaction'))}
-    <section class="opening-card"><div><p class="eyebrow">SALDO AWAL</p><h2>${money(state.settings?.opening_balance || 0)}</h2><p>Saldo per ${formatDate(state.settings?.opening_balance_date)}</p></div>${button('Atur saldo awal', 'edit-opening', 'secondary', 'edit')}</section>
+  const cashbookSelector = `<label class="month-control cashbook-control"><span>Buku kas</span><select data-filter="cashbook" aria-label="Pilih buku kas">${state.cashbooks.map((book) => `<option value="${esc(book.id)}" ${book.id === state.selectedCashbookId ? 'selected' : ''}>${esc(book.name)}${book.bank_name ? ` · ${esc(book.bank_name)}` : ''}</option>`).join('')}</select></label>`;
+  return `${periodHead(state.month, 'Buku kas', 'Catat dan telusuri arus kas secara terpisah untuk setiap rekening.', `${cashbookSelector}${button('Tambah rekening', 'new-cashbook', 'secondary')}${button('Tambah transaksi', 'new-transaction')}`)}
+    <section class="opening-card"><div><p class="eyebrow">${esc(cashbook?.name || 'BUKU KAS')}</p><h2>${money(cashbook?.opening_balance || 0)}</h2><p>Saldo awal per ${formatDate(cashbook?.opening_balance_date)}${cashbook?.bank_name ? ` · ${esc(cashbook.bank_name)}` : ''}${cashbook?.account_number ? ` · No. ${esc(cashbook.account_number)}` : ''}</p></div>${button('Atur saldo awal', 'edit-opening', 'secondary', 'edit')}</section>
     <div class="summary-grid"><div class="summary-item"><span>Saldo berjalan</span><strong>${money(currentBalance)}</strong></div><div class="summary-item"><span>Uang masuk bulan ini</span><strong class="credit">${money(sums.income)}</strong></div><div class="summary-item"><span>Uang keluar bulan ini</span><strong class="debit">${money(sums.expense)}</strong></div><div class="summary-item"><span>Arus bersih bulan ini</span><strong>${money(sums.net)}</strong></div></div>
     <section class="panel category-recap-panel"><div class="category-recap-heading"><div><p class="eyebrow category-recap-eyebrow">KATEGORI</p><h2>Ringkasan berdasarkan kategori</h2><p>Uang masuk dan keluar per kategori · ${esc(monthName(state.month))}</p></div><button class="icon-button category-recap-filter ${state.category || state.kind ? 'is-active' : ''}" type="button" data-act="clear-category-recap" aria-label="Hapus filter kategori" title="Hapus filter kategori">${icon('filter', 17)}</button></div>
       <div class="category-recap-grid">
@@ -152,7 +163,7 @@ function cashflow(state) {
         <select class="select-compact" data-filter="category"><option value="">Semua kategori</option>${categories.map((item) => `<option value="${esc(item)}" ${item === state.category ? 'selected' : ''}>${esc(item)}</option>`).join('')}</select>
         <select class="select-compact" data-filter="kind"><option value="">Semua arus</option><option value="credit" ${state.kind === 'credit' ? 'selected' : ''}>Uang masuk</option><option value="debit" ${state.kind === 'debit' ? 'selected' : ''}>Uang keluar</option></select>
         <button class="button secondary" type="button" data-act="export">${icon('download', 16)}<span>Export CSV</span></button>
-      </div>${transactionTable(rows)}
+      </div>${transactionTable(rows, state)}
     </section>`;
 }
 
@@ -357,6 +368,7 @@ function modal(state) {
   if (!state.modal) return '';
   const { type, row = {} } = state.modal;
   const opening = type === 'opening';
+  const cashbook = type === 'cashbook';
   const invoice = type === 'invoice';
   const contract = type === 'contract';
   const contractPayment = type === 'contract-payment';
@@ -368,6 +380,7 @@ function modal(state) {
     .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '') || (a.invoice_date || '').localeCompare(b.invoice_date || '')) : [];
   const firstCustomerInvoice = customerPaymentRows[0];
   const customerPaymentOptions = customerPaymentRows.map((item) => `<option value="${esc(item.id)}">${esc(item.invoice_number)} · Sisa ${money(Math.max(Number(item.amount || 0) - Number(item.paid_amount || 0), 0))}</option>`).join('');
+  const cashbookOptions = state.cashbooks.map((book) => `<option value="${esc(book.id)}" ${(row.account_id || state.selectedCashbookId) === book.id ? 'selected' : ''}>${esc(book.name)}${book.bank_name ? ` · ${esc(book.bank_name)}` : ''}</option>`).join('');
   const contractPaymentRows = contractPayment ? state.invoices.filter((item) => item.contract_id === row.id
     || (!item.contract_id && String(item.customer || '').trim().toLocaleLowerCase('id-ID') === String(row.customer || '').trim().toLocaleLowerCase('id-ID'))) : [];
   const contractPaid = contractPaymentRows.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);
@@ -378,6 +391,8 @@ function modal(state) {
   ])].map((category) => `<option value="${esc(category)}"></option>`).join('');
   const body = opening
     ? `<div class="form-grid"><label class="field"><span>Nominal saldo awal</span><input name="opening_balance" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.opening_balance ?? 0))}"></label><label class="field"><span>Saldo per tanggal</span><input name="opening_balance_date" type="date" required value="${esc(row.opening_balance_date || state.today)}"></label></div><p class="form-hint">Saldo awal menjadi dasar perhitungan saldo berjalan.</p>`
+    : cashbook
+      ? `<div class="form-grid"><label class="field field-wide"><span>Nama buku kas</span><input name="name" required maxlength="80" value="${esc(row.name || '')}" placeholder="Contoh: Rekening Operasional"></label><label class="field"><span>Bank / nama rekening</span><input name="bank_name" maxlength="120" value="${esc(row.bank_name || '')}" placeholder="Contoh: BCA"></label><label class="field"><span>Nomor rekening</span><input name="account_number" maxlength="80" value="${esc(row.account_number || '')}" placeholder="Opsional"></label><label class="field"><span>Saldo awal</span><input name="opening_balance" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.opening_balance ?? 0))}"></label><label class="field"><span>Saldo per tanggal</span><input name="opening_balance_date" type="date" required value="${esc(row.opening_balance_date || state.today)}"></label></div><p class="form-hint">Transaksi dan saldo buku kas baru akan dihitung terpisah dari rekening lainnya.</p>`
     : contract
       ? `<div class="form-grid"><label class="field field-wide"><span>Nama customer</span><input name="customer" required maxlength="180" value="${esc(row.customer || '')}" placeholder="Nama customer atau perusahaan" autocomplete="organization" ${row.id ? 'readonly' : ''}></label><label class="field field-wide"><span>Nilai kontrak</span><input name="contract_amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.contract_amount ?? ''))}"></label></div><p class="form-hint">${row.id ? 'Nilai kontrak tidak boleh lebih kecil dari jumlah yang sudah dibayar.' : 'Nilai kontrak menjadi batas total pembayaran yang dapat dicatat.'}</p>`
       : contractPayment
@@ -390,10 +405,10 @@ function modal(state) {
         ? `<div class="notice"><span>${esc(row.customer)} · Invoice ${esc(row.invoice_number)} · Sisa tagihan ${money(Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0))}</span></div><div class="form-grid"><label class="field"><span>Nominal pembayaran</span><input name="payment_amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0)))}"></label><label class="field"><span>Tanggal pembayaran</span><input name="paid_date" type="date" required value="${esc(state.today)}"></label></div>`
         : customerPayment
           ? `<div class="notice"><span>Pilih invoice milik ${esc(row.customer)} yang menerima pembayaran.</span></div><div class="form-grid"><label class="field field-wide"><span>Invoice</span><select name="invoice_id" data-customer-payment-invoice required>${customerPaymentOptions}</select></label><label class="field"><span>Nominal pembayaran</span><input name="payment_amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(Math.max(Number(firstCustomerInvoice?.amount || 0) - Number(firstCustomerInvoice?.paid_amount || 0), 0)))}"></label><label class="field"><span>Tanggal pembayaran</span><input name="paid_date" type="date" required value="${esc(state.today)}"></label></div>`
-        : `<div class="form-grid"><label class="field"><span>Tanggal transaksi</span><input name="transaction_date" type="date" required value="${esc(row.transaction_date || state.today)}"></label><label class="field"><span>Jenis arus</span><select name="kind"><option value="debit" ${row.kind !== 'credit' ? 'selected' : ''}>Uang keluar</option><option value="credit" ${row.kind === 'credit' ? 'selected' : ''}>Uang masuk</option></select></label><label class="field"><span>Kategori (pilih atau ketik baru)</span><input name="category" list="cash-category-options" required maxlength="80" value="${esc(row.category || CASH_CATEGORIES[0])}" placeholder="Pilih atau ketik kategori"><datalist id="cash-category-options">${categoryOptions}</datalist></label><label class="field"><span>Nama pengajuan / sumber</span><input name="requester" value="${esc(row.requester || '')}" placeholder="Nama pemohon atau sumber dana"></label><label class="field field-wide"><span>Nominal</span><input name="amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.amount ?? ''))}"></label><label class="field field-wide"><span>Keterangan</span><textarea name="description" rows="3" placeholder="Tujuan transaksi atau detail sumber dana">${esc(row.description || '')}</textarea></label></div>`;
-  const title = opening ? 'Atur saldo awal' : contract ? (row.id ? 'Edit nilai kontrak' : 'Tambah kontrak') : contractPayment ? 'Catat pembayaran kontrak' : confirmInvoicePaid ? 'Konfirmasi pembayaran' : invoice ? 'Edit invoice customer' : invoicePayment ? 'Catat pembayaran invoice' : customerPayment ? 'Catat pembayaran customer' : row.id ? 'Edit transaksi kas' : 'Transaksi baru';
-  const kind = opening ? 'opening' : contract ? 'contract' : contractPayment ? 'contract-payment' : confirmInvoicePaid ? 'confirm-invoice-paid' : invoice ? 'invoice' : invoicePayment ? 'invoice-payment' : customerPayment ? 'customer-payment' : 'transaction';
-  const submit = contract ? (row.id ? 'Simpan perubahan' : 'Simpan kontrak') : confirmInvoicePaid ? 'Ya, sudah dibayar' : contractPayment || invoicePayment || customerPayment ? 'Catat pembayaran' : invoice ? 'Simpan perubahan' : 'Simpan';
+        : `<div class="form-grid"><label class="field field-wide"><span>Buku kas / rekening</span><select name="account_id" required>${cashbookOptions}</select></label><label class="field"><span>Tanggal transaksi</span><input name="transaction_date" type="date" required value="${esc(row.transaction_date || state.today)}"></label><label class="field"><span>Jenis arus</span><select name="kind"><option value="debit" ${row.kind !== 'credit' ? 'selected' : ''}>Uang keluar</option><option value="credit" ${row.kind === 'credit' ? 'selected' : ''}>Uang masuk</option></select></label><label class="field"><span>Kategori (pilih atau ketik baru)</span><input name="category" list="cash-category-options" required maxlength="80" value="${esc(row.category || CASH_CATEGORIES[0])}" placeholder="Pilih atau ketik kategori"><datalist id="cash-category-options">${categoryOptions}</datalist></label><label class="field"><span>Nama pengajuan / sumber</span><input name="requester" value="${esc(row.requester || '')}" placeholder="Nama pemohon atau sumber dana"></label><label class="field field-wide"><span>Nominal</span><input name="amount" type="text" inputmode="numeric" pattern="[0-9.]*" data-money-input required value="${esc(formatAmountInput(row.amount ?? ''))}"></label><label class="field field-wide"><span>Keterangan</span><textarea name="description" rows="3" placeholder="Tujuan transaksi atau detail sumber dana">${esc(row.description || '')}</textarea></label></div>`;
+  const title = opening ? 'Atur saldo awal' : cashbook ? 'Tambah buku kas / rekening' : contract ? (row.id ? 'Edit nilai kontrak' : 'Tambah kontrak') : contractPayment ? 'Catat pembayaran kontrak' : confirmInvoicePaid ? 'Konfirmasi pembayaran' : invoice ? 'Edit invoice customer' : invoicePayment ? 'Catat pembayaran invoice' : customerPayment ? 'Catat pembayaran customer' : row.id ? 'Edit transaksi kas' : 'Transaksi baru';
+  const kind = opening ? 'opening' : cashbook ? 'cashbook' : contract ? 'contract' : contractPayment ? 'contract-payment' : confirmInvoicePaid ? 'confirm-invoice-paid' : invoice ? 'invoice' : invoicePayment ? 'invoice-payment' : customerPayment ? 'customer-payment' : 'transaction';
+  const submit = cashbook ? 'Tambah buku kas' : contract ? (row.id ? 'Simpan perubahan' : 'Simpan kontrak') : confirmInvoicePaid ? 'Ya, sudah dibayar' : contractPayment || invoicePayment || customerPayment ? 'Catat pembayaran' : invoice ? 'Simpan perubahan' : 'Simpan';
   return `<div class="modal-backdrop" data-act="backdrop"><section class="modal-card" role="dialog" aria-modal="true"><header class="modal-heading"><div><p class="eyebrow">PT SWATAMA KARYA GEMILANG</p><h2>${title}</h2></div><button class="icon-button" type="button" data-act="close-modal" aria-label="Tutup">${icon('close', 18)}</button></header><form class="form-stack modal-form" data-form="modal" data-kind="${kind}" data-id="${esc(row.id || '')}" data-contract-id="${esc(contractPayment ? row.id : '')}">${body}<div class="modal-actions"><button class="button secondary" type="button" data-act="close-modal">${icon('close', 16)}<span>Batal</span></button><button class="button primary" type="submit" ${state.busy ? 'disabled' : ''}>${icon('save', 16)}<span>${submit}</span></button></div></form></section></div>`;
 }
 

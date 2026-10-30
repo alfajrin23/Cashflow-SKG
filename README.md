@@ -52,6 +52,8 @@ Menu **Invoice** menyimpan invoice customer pada workspace Cashflow SKG. Jika da
 
 Kategori Cashflow mendukung kategori bawaan dan kategori yang diketik pengguna. Jika database sudah berjalan, jalankan `supabase/migrations/20261026_cashflow_custom_categories.sql` di SQL Editor agar kategori bebas dapat disimpan. Instalasi baru perlu menjalankan migrasi ini setelah `supabase/schema.sql`.
 
+Buku kas mendukung beberapa rekening dengan saldo awal masing-masing. Untuk database yang sudah berjalan, jalankan `supabase/migrations/20261030_cashflow_multiple_accounts_and_office_receipts.sql` di SQL Editor sebelum menggunakan fitur ini. Migrasi membuat buku kas awal **Rekening SKG**, memindahkan saldo awal lama, dan mengaitkan seluruh transaksi lama ke rekening tersebut. Instalasi baru perlu menjalankan migrasi ini setelah `supabase/schema.sql`. Status bukti yang sudah dikirim ke office disimpan pada setiap transaksi dan dapat diubah dari daftar transaksi.
+
 ## Kategori kas
 
 Material; Upah / Kasbon Tukang; Upah Staff Pelaksana; Upah Tim Spesialis; Alat; Operasional; Giro; Subcont; Listrik; Lain-Lain; Fee; Kk; Pajak; Atk; Aset; Cost Subcont; Cost Listrik; Cost Lain Lain. Pengguna juga dapat mengetik kategori baru saat mencatat transaksi.
