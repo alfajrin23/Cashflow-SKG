@@ -131,6 +131,13 @@ function styleBodyRows(sheet, startRow, endRow, columnCount, wrapColumns = []) {
   }
 }
 
+function setHorizontalBorder(cell, side, style, color) {
+  cell.border = {
+    ...(cell.border || {}),
+    [side]: { style, color: { argb: color } },
+  };
+}
+
 function setSheetDefaults(sheet, zoomScale = 90) {
   sheet.views = [{ state: 'normal', showGridLines: false, zoomScale }];
   sheet.properties.defaultRowHeight = 22;
@@ -321,7 +328,16 @@ export async function downloadInvoiceExcel(rows, date, periodLabel, paymentStatu
       [2, 3, 4].forEach((column) => {
         sheet.getCell(contractStartRow, column).alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
       });
+      if (contractEndRow < customerEndRow) {
+        for (let column = 2; column <= headers.length; column += 1) {
+          setHorizontalBorder(sheet.getCell(contractEndRow, column), 'bottom', 'thin', palette.navy);
+        }
+      }
       contractStartIndex = contractEndIndex;
+    }
+    for (let column = 1; column <= headers.length; column += 1) {
+      setHorizontalBorder(sheet.getCell(customerStartRow, column), 'top', 'medium', palette.navy);
+      setHorizontalBorder(sheet.getCell(customerEndRow, column), 'bottom', 'medium', palette.navy);
     }
     customerStartIndex = customerEndIndex;
   }
