@@ -45,6 +45,11 @@ export async function saveCashbook(values, id) {
   return data;
 }
 
+export async function deleteCashbook(id) {
+  const { error } = await supabase.from('cashflow_accounts').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function saveSettings(values) {
   const { data, error } = await supabase.from('cashflow_settings')
     .upsert({ ...values, workspace_id: workspaceId }, { onConflict: 'workspace_id' })

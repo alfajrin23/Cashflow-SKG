@@ -1,5 +1,5 @@
 import {
-  deleteInvoice, deleteTransaction, isConfigured, loadCashbooks, loadCustomerContracts, loadInputLogs, loadInvoices, loadProfile,
+  deleteCashbook, deleteInvoice, deleteTransaction, isConfigured, loadCashbooks, loadCustomerContracts, loadInputLogs, loadInvoices, loadProfile,
   loadTransactions, loadWorkspaceUsers, saveCashbook, saveCustomerContract, saveInvoice, saveTransaction,
   setReceiptSentToOffice, setWorkspaceId, setWorkspaceUserRole, supabase,
 } from './db.js';
@@ -235,8 +235,45 @@ async function handleClick(event) {
     render();
     return;
   }
-  if (act === 'new-transaction') { openTransaction(); return; }
+  if (act === 'new-transaction') {
+    if (!state.cashbooks.length) { notify('Tambahkan buku kas terlebih dahulu.', 'error'); return; }
+    openTransaction();
+    return;
+  }
   if (act === 'new-cashbook') { state.modal = { type: 'cashbook', row: {} }; render(); return; }
+  if (act === 'edit-cashbook') {
+    const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
+    if (cashbook) { state.modal = { type: 'cashbook-edit', row: cashbook }; render(); }
+    return;
+  }
+  if (act === 'delete-cashbook') {
+    const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
+    if (!cashbook) return;
+    const transactionCount = state.transactions.filter((row) => row.account_id === cashbook.id).length;
+    if (transactionCount) {
+      notify(`Buku kas masih memiliki ${transactionCount} transaksi. Hapus atau pindahkan transaksinya sebelum menghapus buku kas.`, 'error');
+      return;
+    }
+    if (!window.confirm(`Hapus buku kas “${cashbook.name}”? Tindakan ini tidak dapat dibatalkan.`)) return;
+    state.busy = true;
+    render();
+    try {
+      await deleteCashbook(cashbook.id);
+      state.cashbooks = state.cashbooks.filter((book) => book.id !== cashbook.id);
+      state.selectedCashbookId = state.cashbooks[0]?.id || '';
+      state.inputLogs = [];
+      state.busy = false;
+      render();
+      notify('Buku kas berhasil dihapus.');
+    } catch (error) {
+      state.busy = false;
+      render();
+      notify(error?.code === '23503'
+        ? 'Buku kas memiliki transaksi terkait. Hapus atau pindahkan transaksinya terlebih dahulu.'
+        : message(error), 'error');
+    }
+    return;
+  }
   if (act === 'new-customer-contract') {
     state.modal = { type: 'contract', row: { customer: button.dataset.customer || '' } };
     render();
@@ -517,14 +554,19 @@ async function handleSubmit(event) {
     notify('Pilih buku kas yang valid.', 'error');
     return;
   }
-  if (form.dataset.kind === 'cashbook') {
+  if (['cashbook', 'cashbook-edit'].includes(form.dataset.kind)) {
     const name = String(values.name || '').trim();
     if (!name) { notify('Nama buku kas wajib diisi.', 'error'); return; }
     if (name.length > 80) { notify('Nama buku kas maksimal 80 karakter.', 'error'); return; }
-    if (state.cashbooks.some((book) => book.name.toLocaleLowerCase('id-ID') === name.toLocaleLowerCase('id-ID'))) {
+    if (state.cashbooks.some((book) => book.id !== form.dataset.id
+      && book.name.toLocaleLowerCase('id-ID') === name.toLocaleLowerCase('id-ID'))) {
       notify('Nama buku kas tersebut sudah digunakan.', 'error');
       return;
     }
+  }
+  if (form.dataset.kind === 'cashbook-edit' && !state.cashbooks.some((book) => book.id === form.dataset.id)) {
+    notify('Buku kas tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error');
+    return;
   }
   if (form.dataset.kind === 'opening' && !state.cashbooks.some((book) => book.id === form.dataset.id)) {
     notify('Buku kas tidak ditemukan. Muat ulang halaman lalu coba lagi.', 'error');
@@ -626,6 +668,14 @@ async function handleSubmit(event) {
       state.kind = '';
       state.search = '';
       state.inputLogs = [];
+    } else if (form.dataset.kind === 'cashbook-edit') {
+      const cashbook = await saveCashbook({
+        name: values.name.trim(),
+        bank_name: values.bank_name.trim(),
+        account_number: values.account_number.trim(),
+      }, form.dataset.id);
+      state.cashbooks = state.cashbooks.map((book) => book.id === cashbook.id ? cashbook : book);
+      state.inputLogs = [];
     } else if (form.dataset.kind === 'contract') {
       const contract = await saveCustomerContract(form.dataset.id
         ? { contract_amount: parseAmountInput(values.contract_amount) }
@@ -704,6 +754,7 @@ async function handleSubmit(event) {
     state.busy = false;
     render();
     notify(form.dataset.kind === 'cashbook' ? 'Buku kas baru berhasil dibuat.'
+      : form.dataset.kind === 'cashbook-edit' ? 'Detail buku kas berhasil diperbarui.'
       : form.dataset.kind === 'opening' ? 'Saldo awal buku kas diperbarui.'
       : form.dataset.kind === 'contract' ? (form.dataset.id ? 'Nilai kontrak berhasil diperbarui.' : 'Kontrak berhasil disimpan.')
       : form.dataset.kind === 'contract-payment' ? 'Pembayaran kontrak berhasil dicatat.'

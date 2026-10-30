@@ -54,6 +54,8 @@ Kategori Cashflow mendukung kategori bawaan dan kategori yang diketik pengguna. 
 
 Buku kas mendukung beberapa rekening dengan saldo awal masing-masing. Untuk database yang sudah berjalan, jalankan `supabase/migrations/20261030_cashflow_multiple_accounts_and_office_receipts.sql` di SQL Editor sebelum menggunakan fitur ini. Migrasi membuat buku kas awal **Rekening SKG**, memindahkan saldo awal lama, dan mengaitkan seluruh transaksi lama ke rekening tersebut. Instalasi baru perlu menjalankan migrasi ini setelah `supabase/schema.sql`. Status bukti yang sudah dikirim ke office disimpan pada setiap transaksi dan dapat diubah dari daftar transaksi.
 
+Nama dan detail buku kas dapat diedit dari halaman Cashflow. Buku kas hanya dapat dihapus setelah semua transaksinya dihapus atau dipindahkan ke rekening lain; database juga menolak penghapusan jika masih ada transaksi terkait.
+
 ## Kategori kas
 
 Material; Upah / Kasbon Tukang; Upah Staff Pelaksana; Upah Tim Spesialis; Alat; Operasional; Giro; Subcont; Listrik; Lain-Lain; Fee; Kk; Pajak; Atk; Aset; Cost Subcont; Cost Listrik; Cost Lain Lain. Pengguna juga dapat mengetik kategori baru saat mencatat transaksi.
