@@ -4,6 +4,7 @@ import {
   setReceiptSentToOffice, setWorkspaceId, setWorkspaceUserRole, supabase,
 } from './db.js';
 import { formatAmountInput, parseAmountInput, statusForInvoice, today } from './helpers.js';
+import { downloadCashflowCsv, downloadInvoiceCsv } from './csv-exports.js';
 import { renderApp } from './views.js';
 import './style.css';
 
@@ -148,27 +149,21 @@ function contractRemaining(contract) {
   return Math.max(Number(contract.contract_amount || 0) - contractPaidAmount(contract), 0);
 }
 
-function exportCsv() {
-  const filtered = state.transactions.filter((row) => row.transaction_date?.slice(0, 7) === state.month
+function cashflowExportRows() {
+  const term = state.search.trim().toLocaleLowerCase('id-ID');
+  return state.transactions.filter((row) => row.transaction_date?.slice(0, 7) === state.month
     && row.account_id === state.selectedCashbookId
     && (!state.category || row.category === state.category)
     && (!state.kind || row.kind === state.kind)
-    && (!state.search || `${row.category} ${row.requester} ${row.description}`.toLocaleLowerCase('id-ID').includes(state.search.toLocaleLowerCase('id-ID'))));
-  const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
-  const lines = [['Buku kas', 'Bank / rekening', 'Tanggal', 'Jenis', 'Kategori', 'Pengaju / Sumber', 'Keterangan', 'Nominal', 'Bukti dikirim ke office'],
-    ...filtered.map((row) => [cashbook?.name || '', cashbook?.bank_name || '', row.transaction_date, row.kind === 'credit' ? 'Uang masuk' : 'Uang keluar', row.category, row.requester, row.description, row.amount, row.receipt_sent_to_office ? 'Sudah' : 'Belum'])];
-  const csv = '\ufeff' + lines.map((line) => line.map(quote).join(',')).join('\r\n');
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  link.download = `cashflow-skg-${state.month}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+    && (!term || `${row.category || ''} ${row.requester || ''} ${row.description || ''}`.toLocaleLowerCase('id-ID').includes(term)))
+    .sort((a, b) => (a.transaction_date || '').localeCompare(b.transaction_date || '')
+      || (a.created_at || '').localeCompare(b.created_at || ''));
 }
 
-function exportInvoicesCsv() {
+function invoiceExportRows() {
   const term = state.search.trim().toLocaleLowerCase('id-ID');
-  const rows = state.invoices.filter((row) => {
+  return state.invoices.filter((row) => {
+    if (state.invoicePeriod && row.invoice_date?.slice(0, 7) !== state.invoicePeriod) return false;
     const contract = contractForInvoice(row);
     const remaining = contract ? contractRemaining(contract) : 0;
     const invoiceBalance = Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0);
@@ -176,24 +171,58 @@ function exportInvoicesCsv() {
       || (state.invoiceStatus === 'open' && contract && remaining > 0)
       || (state.invoiceStatus === 'partial' && contract && contractPaidAmount(contract) > 0 && remaining > 0)
       || (state.invoiceStatus === 'paid' && contract && remaining === 0)
-      || (state.invoiceStatus === 'late' && statusForInvoice(row)[0] === 'late');
+      || (state.invoiceStatus === 'late' && invoiceBalance > 0 && row.due_date && row.due_date < state.today);
     const matchesInvoicePaymentStatus = !state.invoicePaymentStatus
       || (state.invoicePaymentStatus === 'paid' && invoiceBalance === 0)
       || (state.invoicePaymentStatus === 'unpaid' && invoiceBalance > 0);
     return matchesStatus
       && matchesInvoicePaymentStatus
-      && (!term || `${row.customer} ${row.invoice_number} ${row.po_number}`.toLocaleLowerCase('id-ID').includes(term));
-  });
-  const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const lines = [['Customer', 'No. invoice', 'No. PO', 'Tanggal invoice', 'Jatuh tempo', 'Nilai invoice', 'Sudah dibayar', 'Sisa', 'Status'],
-    ...rows.map((row) => [row.customer, row.invoice_number, row.po_number, row.invoice_date, row.due_date,
-      row.amount, row.paid_amount, Math.max(Number(row.amount || 0) - Number(row.paid_amount || 0), 0), statusForInvoice(row)[1]])];
-  const csv = '\ufeff' + lines.map((line) => line.map(quote).join(',')).join('\r\n');
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  link.download = `invoice-customer-${today()}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+      && (!term || `${row.customer || ''} ${row.invoice_number || ''} ${row.po_number || ''}`.toLocaleLowerCase('id-ID').includes(term));
+  }).map((row) => ({ ...row, statusLabel: statusForInvoice(row)[1] }))
+    .sort((a, b) => (a.customer || '').localeCompare(b.customer || '', 'id-ID', { sensitivity: 'base' })
+      || (a.invoice_date || '').localeCompare(b.invoice_date || '')
+      || (a.invoice_number || '').localeCompare(b.invoice_number || '', 'id-ID'));
+}
+
+function exportCsv() {
+  const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
+  downloadCashflowCsv(cashflowExportRows(), cashbook, state.month);
+}
+
+function exportInvoicesCsv() {
+  downloadInvoiceCsv(invoiceExportRows(), today(), state.invoicePeriod);
+}
+
+async function exportCashflowExcel() {
+  try {
+    const cashbook = state.cashbooks.find((book) => book.id === state.selectedCashbookId);
+    const { downloadCashflowExcel } = await import('./exports.js');
+    await downloadCashflowExcel(cashflowExportRows(), cashbook, state.month, new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(`${state.month}-15T12:00:00`)));
+    notify('File Excel cashflow berhasil dibuat.');
+  } catch (error) {
+    console.error('Gagal membuat file Excel cashflow:', error);
+    notify('File Excel cashflow gagal dibuat. Coba lagi.', 'error');
+  }
+}
+
+async function exportInvoicesExcel() {
+  try {
+    const { downloadInvoiceExcel } = await import('./exports.js');
+    const periodLabel = state.invoicePeriod
+      ? new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(`${state.invoicePeriod}-15T12:00:00`))
+      : 'Semua periode';
+    const paymentStatusLabel = state.invoicePaymentStatus === 'paid' ? 'Sudah dibayar'
+      : state.invoicePaymentStatus === 'unpaid' ? 'Belum lunas' : 'Semua status';
+    const contractStatusLabel = state.invoiceStatus === 'open' ? 'Masih berjalan'
+      : state.invoiceStatus === 'partial' ? 'Sudah ada pembayaran'
+        : state.invoiceStatus === 'paid' ? 'Lunas'
+          : state.invoiceStatus === 'late' ? 'Ada invoice jatuh tempo' : 'Semua kontrak';
+    await downloadInvoiceExcel(invoiceExportRows(), today(), periodLabel, paymentStatusLabel, contractStatusLabel);
+    notify('File Excel invoice berhasil dibuat.');
+  } catch (error) {
+    console.error('Gagal membuat file Excel invoice:', error);
+    notify('File Excel invoice gagal dibuat. Coba lagi.', 'error');
+  }
 }
 
 async function handleClick(event) {
@@ -401,7 +430,9 @@ async function handleClick(event) {
     return;
   }
   if (act === 'export') { exportCsv(); return; }
+  if (act === 'export-excel') { await exportCashflowExcel(); return; }
   if (act === 'export-invoices') { exportInvoicesCsv(); return; }
+  if (act === 'export-invoices-excel') { await exportInvoicesExcel(); return; }
   if (act === 'retry') {
     await loadData({ withLogs: state.tab === 'logs-input', withUsers: state.tab === 'accounts', withInvoices: state.tab === 'tagihan' });
     return;
